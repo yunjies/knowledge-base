@@ -1,0 +1,77 @@
+# ============================================================
+# knowledge-base — 版本控制忽略规则
+# ============================================================
+
+# --- Python 生成物 ---------------------------------------------------
+# 字节码与编译产物
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 构建 / 打包产物
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+
+# 测试与类型检查缓存
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+report.json
+
+# 虚拟环境与工具链
+.venv/
+venv/
+env/
+ENV/
+.uv/
+uv.lock
+
+# --- 编辑器 / 操作系统 ------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+!.vscode/extensions.json
+
+# --- 日志与数据库 -----------------------------------------------------
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.db
+
+# --- 环境变量与密钥 ---------------------------------------------------
+# 注意：仅忽略真实环境文件，.env.example 需要入库
+.env
+.env.*
+!.env.example
+
+# --- 子仓库：独立 checkout，不属于本仓库 ------------------------------
+# assets/projects/home-lab/src/Home-Media-Pilot 是 github.com/yunjies/Home-Media-Pilot
+# 的独立克隆（自带 .git）。它有自己的版本历史与远端，属于被引用的外部产物，
+# 不是本知识库的一部分，因此整目录排除，避免把外部仓库嵌成 submodule 或快照。
+assets/projects/home-lab/src/Home-Media-Pilot/
+
+# 同理，若出现其它独立克隆的 src 目录也一并排除
+assets/projects/*/src/*/.git/
+
+# --- 大型媒体与本地环境产物 -------------------------------------------
+assets/**/media/
+assets/**/downloads/
+assets/**/data/
+*.mp4
+*.mkv
+*.iso
