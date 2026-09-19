@@ -259,12 +259,64 @@ HTTP 侧断言健康与版本路由的契约、CORS 来源的解析，以及能�
 
 ## CONFIG_LAYER
 
-校验部署与构建配置：compose 拓扑、Dockerfile、Makefile 目标、CI 作业、前端构建脚本，以及示例环境文件不含真实凭据。
+校验部署与构建配置：compose 拓扑、镜像构建契约、容器 CI 流水线、Makefile 目标、前端构建脚本，以及示例环境文件不含真实凭据。
 
-安全相关断言在此集中：NAS 部署的媒体与下载挂载必须带只读标志；`.env.example` 中以密钥命名的键不得携带非占位值。这两条看的是部署产物本身，而非代码，因此只能在此层校验。
+本层是唯一按"部署产物本身"（而非代码）判定的地方，因此容器化相关的判据集中于此。它不需要 Docker 守护进程：断言的是构建与运行所依赖的**契约**——声明的 `COPY` 能否在构建上下文内解析、启动命令是否引用构建产出的解释器、迁移是否在服务前执行、媒体挂载是否只读、发布镜像是否与 compose 引用一致。
+
+安全相关断言在此集中：NAS 部署的媒体与下载挂载必须带只读标志；`.env` 与 `.git` 不得进入构建上下文；`.env.example` 中以密钥命名的键不得携带非占位值。
+
+```mermaid
+flowchart TD
+    START_CFG(["仓库根路径"]) --> COMPOSE_LAYER[["compose 栈契约"]]
+    COMPOSE_LAYER --> DOCKER_LAYER[["镜像构建契约"]]
+    DOCKER_LAYER --> CI_LAYER[["容器 CI 契约"]]
+    CI_LAYER --> CFG_RESULT(["配置层结论"])
+```
+
+### START_CFG
+
+配置层入口，接收仓库根路径。
 
 - 输入参数：
   - `repository_root`：被测仓库根路径；来源为 `RESOLVE_REPO`
+- 输出参数：
+  - `config_targets`：待校验的配置产物；去向为 `COMPOSE_LAYER`
+
+### COMPOSE_LAYER
+
+校验 compose 栈：YAML 可解析、服务与依赖、卷与端口映射、环境变量类型、镜像引用一致性。
+
+- 输入参数：
+  - `config_targets`：待校验的配置产物；来源为 `START_CFG`
+- 输出参数：
+  - `stack_evidence`：compose 校验证据；去向为 `DOCKER_LAYER`
+
+### DOCKER_LAYER
+
+校验镜像构建契约：`COPY` 源在上下文内可解析、基础镜像与启动命令齐备、启动命令引用 `uv sync` 产出的解释器、迁移输入被拷入、NAS 入口在执行服务前先跑迁移、`.dockerignore` 排除机密物。
+
+生成物（`frontend/dist`）被 `.gitignore` 标记为产物时豁免，但套件同时断言**每条构建路径都先产出它**，使豁免不等于放任。
+
+- 输入参数：
+  - `stack_evidence`：compose 校验证据；来源为 `COMPOSE_LAYER`
+- 输出参数：
+  - `image_evidence`：镜像构建证据；去向为 `CI_LAYER`
+
+### CI_LAYER
+
+校验容器 CI 流水线：CI 构建的是被发布的那份 Dockerfile、构建前先产出前端、发布前先登录、权限最小化、发布触发分支与 compose 拉取的分支一致、action 版本已固定。
+
+- 输入参数：
+  - `image_evidence`：镜像构建证据；来源为 `DOCKER_LAYER`
+- 输出参数：
+  - `config_verdict`：配置层结论；去向为 `CFG_RESULT`
+
+### CFG_RESULT
+
+配置层的完成出口。三个子流程的结论汇合于此，交由 `VERDICT` 统一裁决。
+
+- 输入参数：
+  - `config_verdict`：配置层结论；来源为 `CI_LAYER`
 - 输出参数：
   - `layer_result`：该层结论；去向为 `VERDICT`
 
@@ -326,8 +378,10 @@ HTTP 侧断言健康与版本路由的契约、CORS 来源的解析，以及能�
 | `tests/src/apps/workers/` | `apps/worker.py`、`apps/scheduler.py` |
 | `tests/src/migrations/` | `migrations/` |
 | `tests/src/frontend/` | `frontend/` |
-| `tests/config/compose/` | compose 文件与 Dockerfile |
-| `tests/config/build/` | `Makefile`、`pyproject.toml`、`.github/workflows/` |
+| `tests/config/compose/` | 四个 compose 文件：拓扑与栈运行契约 |
+| `tests/config/docker/` | `docker/*.Dockerfile`、`docker/*.sh`：镜像构建与启动契约 |
+| `tests/config/ci/` | `.github/workflows/`：容器构建与发布流水线 |
+| `tests/config/build/` | `Makefile`、`pyproject.toml`：构建入口与依赖声明 |
 
 ## 运行方式
 
@@ -352,4 +406,5 @@ python3 tests/run_tests.py
 - 需要真实 qBittorrent、M-Team、Jellyfin、MetaTube 或 OpenSubtitles 的在线行为。
 - 需要 PostgreSQL 或容器运行时的集成行为。
 - 浏览器内的交互行为——前端未声明测试运行器，其 CI 只做类型检查与打包。
-- 容器内前端产物是否可达——本套件只断言该接线当前未建立。
+- 镜像能否真正构建成功、容器能否真正启动并连上数据库。本层校验的是构建与运行所依赖的**契约**（`COPY` 可解析、启动命令自洽、迁移顺序、挂载只读、端口与镜像引用一致），不是构建结果本身；沙箱无 Docker 守护进程，此类断言由 CI 的 docker 作业承担。
+- 容器内前端产物是否可达——本套件断言的是该接线当前未建立。
