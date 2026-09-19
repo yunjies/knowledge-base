@@ -52,20 +52,10 @@ def test_infrastructure_modules_are_present(repo: Path, module_path: str) -> Non
     assert (repo / module_path).is_file(), f"missing module: {module_path}"
 
 
-def test_secret_store_module_is_absent_and_blocks_imports(repo: Path) -> None:
-    """Record the checkout's actual precondition.
-
-    `packages/application/libraries.py` and `apps/api/routes_phase4.py` import
-    `packages.infrastructure.secrets.CredentialStore`. That module is not in the
-    checkout, so every module transitively reaching either of them fails to
-    import. This test passes only while that absence is real; restoring the
-    module turns it into a signal that the precondition changed.
-    """
+def test_secret_store_module_is_present_and_used_by_its_importers(repo: Path) -> None:
+    """The credential store must exist and still be the one its callers import."""
     secrets_module = repo / "packages" / "infrastructure" / "secrets.py"
-    assert not secrets_module.exists(), (
-        "packages/infrastructure/secrets.py now exists; the suite's recorded "
-        "precondition is stale and the import-blocked tests must be re-enabled"
-    )
+    assert secrets_module.is_file(), "missing module: packages/infrastructure/secrets.py"
 
     importers = [
         repo / "packages" / "application" / "libraries.py",
@@ -85,16 +75,69 @@ def test_secret_store_module_is_absent_and_blocks_imports(repo: Path) -> None:
         "packages.application.libraries",
     ],
 )
-def test_modules_reaching_secret_store_are_not_importable(
-    repo: Path, module_name: str
-) -> None:
-    """These imports must fail while the secret store is absent.
-
-    The module file itself is present, so the failure only appears when the
-    body executes and its transitive import is resolved.
-    """
+def test_modules_reaching_secret_store_are_importable(repo: Path, module_name: str) -> None:
+    """Every module that depends on the credential store must import cleanly."""
     import importlib
 
-    with pytest.raises(ModuleNotFoundError) as excinfo:
-        importlib.import_module(module_name)
-    assert "packages.infrastructure.secrets" in str(excinfo.value)
+    assert importlib.import_module(module_name) is not None
+
+
+def test_credential_store_round_trips_and_rejects_tampering(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The store must encrypt reversibly and refuse altered ciphertext."""
+    import importlib
+
+    secrets_module = importlib.import_module("packages.infrastructure.secrets")
+    store = secrets_module.CredentialStore()
+
+    monkeypatch.setenv("PILOT_SECRET_KEY_FILE", str(tmp_path / "master.key"))
+    payload = {"api_key": "very-secret-token"}
+    token = store.encrypt(payload)
+
+    assert "very-secret-token" not in token, "ciphertext must not carry the plaintext"
+    assert store.decrypt(token) == payload
+
+    tampered = token[:-4] + ("AAAA" if not token.endswith("AAAA") else "BBBB")
+    with pytest.raises(secrets_module.CredentialStoreError):
+        store.decrypt(tampered)
+
+
+def test_credential_store_reads_and_writes_the_schema_columns(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The encrypted column must exist in the migrated schema and hold a token.
+
+    This is the join between the migration and the store: an import-only check
+    would pass even if the column were absent from the database.
+    """
+    import importlib
+    import os
+    import subprocess
+    import sys
+
+    db_path = tmp_path / "schema.db"
+    environment = {**os.environ, "DATABASE_URL": f"sqlite:///{db_path}"}
+    completed = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=repo,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr[-2000:]
+
+    import sqlite3
+
+    connection = sqlite3.connect(db_path)
+    try:
+        columns = {row[1] for row in connection.execute("pragma table_info(provider_configs)")}
+    finally:
+        connection.close()
+    for expected in (
+        "encrypted_credentials",
+        "last_connection_status",
+        "last_connection_message",
+        "last_connection_checked_at",
+    ):
+        assert expected in columns, f"migrated schema lacks provider_configs.{expected}"

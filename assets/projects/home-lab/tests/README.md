@@ -65,18 +65,20 @@ flowchart TD
 
 ## PRECONDITION
 
-校验仓库的既成事实：哪些模块存在、哪些模块因缺失依赖无法导入。
+校验仓库的既成事实：顶层结构、基础设施模块是否齐备、凭据存储是否可用，以及迁移产出的模式是否与模型一致。
 
-本节点是**唯一**承载环境事实的地方。它记录的前提决定后续各层节点中有多少断言会失败——但失败只改变结论，不改变执行：套件不设跳过通道，无法导入即判失败。
+本节点是**唯一**承载环境事实的地方。它同时承担迁移与凭据存储的**组合**校验——导入通过不等于可用，因此这里既检查模块存在，也实际跑一次迁移并断言凭据列可达。套件不设跳过通道：无法导入即判失败。
 
 ```mermaid
 flowchart TD
     START_PRE(["收到仓库路径"]) --> CHECK_DIRS{"顶层目录齐备？"}
     CHECK_DIRS -- 否 --> PRE_FAIL(["记录失败：仓库结构异常"])
     CHECK_DIRS -- 是 --> CHECK_SECRETS{"secrets 模块存在？"}
-    CHECK_SECRETS -- 否 --> RECORD_ABSENT["记录缺失前提并断言影响面"]
-    CHECK_SECRETS -- 是 --> PRE_PASS(["前提已记录"])
-    RECORD_ABSENT --> PRE_PASS
+    CHECK_SECRETS -- 否 --> PRE_FAIL
+    CHECK_SECRETS -- 是 --> CHECK_ROUNDTRIP["凭据加解密往返与篡改拒绝"]
+    CHECK_ROUNDTRIP --> CHECK_SCHEMA{"迁移产出的列齐备？"}
+    CHECK_SCHEMA -- 否 --> PRE_FAIL
+    CHECK_SCHEMA -- 是 --> PRE_PASS(["前提已记录"])
     PRE_PASS --> DONE_PRE(["进入各层校验"])
     PRE_FAIL --> DONE_PRE
 ```
@@ -102,24 +104,37 @@ flowchart TD
 
 ### CHECK_SECRETS
 
-校验 `packages/infrastructure/secrets.py` 的存在性，并在缺失时断言其影响面。
+校验 `packages/infrastructure/secrets.py` 的存在性及其导入方仍依赖它。
 
-该模块被 `packages/application/libraries.py` 与 `apps/api/routes_phase4.py` 导入，因此缺失时凡是传递到达二者的模块都无法导入。本节点把"缺失"与"影响哪些模块"一并断言为可复算的事实。
+该模块被 `packages/application/libraries.py` 与 `apps/api/routes_phase4.py` 导入；删除它会使凡是传递到达二者的模块全部无法导入。此处断言的不只是文件存在，还包括这两个导入点没有被绕开。
 
 - 输入参数：
   - `checkout_facts`：仓库事实；来源为 `CHECK_DIRS`
 - 输出参数：
-  - `absent_module`：已记录的缺失模块前提；去向为 `RECORD_ABSENT`
-  - `checkout_facts`：模块存在时的仓库事实；去向为 `PRE_PASS`
+  - `checkout_facts`：模块存在时的仓库事实；去向为 `CHECK_ROUNDTRIP`
+  - `structure_error`：模块缺失的错误；去向为 `PRE_FAIL`
 
-### RECORD_ABSENT
+### CHECK_ROUNDTRIP
 
-记录缺失前提：断言模块确实不存在、断言导入方确实引用它、并断言受影响的模块确实无法导入。
+校验凭据存储的可用性：加密结果不含明文、解密可还原、被篡改的密文必须被拒绝。
 
 - 输入参数：
-  - `absent_module`：缺失模块前提；来源为 `CHECK_SECRETS`
+  - `checkout_facts`：仓库事实；来源为 `CHECK_SECRETS`
 - 输出参数：
-  - `recorded_precondition`：已记录的前提；去向为 `PRE_PASS`
+  - `roundtrip_evidence`：加解密往返与篡改拒绝的证据；去向为 `CHECK_SCHEMA`
+  - `structure_error`：加解密不可逆或未拒绝篡改；去向为 `PRE_FAIL`
+
+### CHECK_SCHEMA
+
+实际执行一次迁移，并断言 `provider_configs` 的凭据与连接状态列确实存在。
+
+导入通过不等于可用：`CredentialStore` 写入的列由迁移提供，二者必须组合校验，否则模块存在而列缺失时套件仍会给出绿灯。
+
+- 输入参数：
+  - `roundtrip_evidence`：加解密证据；来源为 `CHECK_ROUNDTRIP`
+- 输出参数：
+  - `checkout_facts`：迁移产出的模式事实；去向为 `PRE_PASS`
+  - `structure_error`：迁移失败或列缺失；去向为 `PRE_FAIL`
 
 ### PRE_FAIL
 
@@ -135,8 +150,7 @@ flowchart TD
 前提校验的完成出口，各层校验据此进入执行。
 
 - 输入参数：
-  - `checkout_facts`：仓库事实；来源为 `CHECK_SECRETS`
-  - `recorded_precondition`：已记录的前提；来源为 `RECORD_ABSENT`
+  - `checkout_facts`：仓库事实；来源为 `CHECK_SCHEMA`
 - 输出参数：无
 
 ### DONE_PRE
@@ -236,7 +250,7 @@ HTTP 侧断言健康与版本路由的契约、CORS 来源的解析，以及能�
 
 校验 `migrations/`：修订标识唯一、父引用可解析、链的连通性、每个修订定义升降级。
 
-本层当前记录两处既成缺陷：`0010_provider_platform_catalog` 声明的父修订 `0009_provider_connection_status` 不在仓库中，故 `alembic upgrade head` 无法抵达该修订；`0007_jellyfin_library_identity` 不被任何修订引用。二者以集合相等断言钉住——修复或新增修订都会使断言失败，从而强制复核。
+本层断言链的**连通性**：修订标识唯一、父引用全部可解析、从唯一头节点回溯能恰好走遍全部修订、每个修订都定义升降级。链上任一处断裂都会使 `alembic upgrade head` 无法抵达头节点，这是断言所要排除的失败模式。
 
 - 输入参数：
   - `repository_root`：被测仓库根路径；来源为 `RESOLVE_REPO`

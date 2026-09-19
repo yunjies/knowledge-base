@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 import typer
+from typer.testing import CliRunner
 
 from _harness.paths import repository_root
 
@@ -74,7 +75,7 @@ def _cli_or_fail():
 
 def test_doctor_reports_service_identity_in_json(capsys: pytest.CaptureFixture[str]) -> None:
     app = _cli_or_fail()
-    runner = typer.testing.CliRunner()
+    runner = CliRunner()
     result = runner.invoke(app, ["system", "doctor", "--output", "json"])
     assert result.exit_code == 0
     assert "home-media-pilot" in result.stdout
@@ -82,13 +83,13 @@ def test_doctor_reports_service_identity_in_json(capsys: pytest.CaptureFixture[s
 
 def test_doctor_rejects_an_unknown_output_format() -> None:
     app = _cli_or_fail()
-    runner = typer.testing.CliRunner()
+    runner = CliRunner()
     result = runner.invoke(app, ["system", "doctor", "--output", "yaml"])
     assert result.exit_code != 0
 
 
 def test_root_app_requires_a_subcommand() -> None:
     app = _cli_or_fail()
-    runner = typer.testing.CliRunner()
+    runner = CliRunner()
     result = runner.invoke(app, [])
     assert result.exit_code != 0

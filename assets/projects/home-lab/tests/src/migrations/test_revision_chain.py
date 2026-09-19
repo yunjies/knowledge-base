@@ -51,17 +51,8 @@ def test_revision_chain_has_exactly_one_root(repo: Path) -> None:
     assert len(roots) == 1, f"expected one root revision, found {len(roots)}"
 
 
-MISSING_ANCESTOR = "0009_provider_connection_status"
-
-
 def test_every_down_revision_resolves(repo: Path) -> None:
-    """No revision may point at a parent that does not exist.
-
-    `0010_provider_platform_catalog` declares `0009_provider_connection_status`
-    as its parent, and that revision is not in the checkout. The chain is
-    therefore broken, so `alembic upgrade head` cannot reach 0010. This test
-    pins that fact; restoring 0009 makes it pass.
-    """
+    """No revision may point at a parent that does not exist."""
     ids = {_read_constant(path, "revision") for path in _revision_files(repo)}
     dangling = {}
     for path in _revision_files(repo):
@@ -73,36 +64,39 @@ def test_every_down_revision_resolves(repo: Path) -> None:
         if missing:
             dangling[path.name] = missing
 
-    assert dangling == {"0010_provider_platform_catalog.py": [MISSING_ANCESTOR]}, (
-        "the set of revisions with unresolvable parents changed: "
-        f"{dangling}"
-    )
+    assert dangling == {}, f"revisions with unresolvable parents: {dangling}"
 
 
-def test_chain_is_fully_linked(repo: Path) -> None:
-    """Record which revisions no other revision descends from.
+def test_chain_is_a_single_connected_sequence(repo: Path) -> None:
+    """The revisions must form one linear chain from the root to a single head.
 
-    Two revisions are unreferenced in this checkout: `0007_jellyfin_library_identity`,
-    which sits off the linear chain, and `0010_provider_platform_catalog`, which
-    dangles because its declared parent is absent.
+    Walking parents from the head must visit every revision exactly once. A
+    revision left off that walk would be an unreachable branch, and
+    `alembic upgrade head` would silently skip it.
     """
-    ids = {_read_constant(path, "revision") for path in _revision_files(repo)}
-    referenced: set[str] = set()
-    for path in _revision_files(repo):
-        down = _read_constant(path, "down_revision")
-        if down is None:
-            continue
-        referenced.update(down if isinstance(down, (list, tuple)) else [down])
-    roots = {
-        _read_constant(path, "revision")
+    revisions = {
+        _read_constant(path, "revision"): _read_constant(path, "down_revision")
         for path in _revision_files(repo)
-        if _read_constant(path, "down_revision") is None
     }
-    orphaned = ids - referenced - roots
-    assert orphaned == {
-        "0007_jellyfin_library_identity",
-        "0010_provider_platform_catalog",
-    }, f"the set of unreferenced revisions changed: {orphaned}"
+    ids = set(revisions)
+    roots = {rev for rev, down in revisions.items() if down is None}
+    assert len(roots) == 1, f"expected exactly one root revision, found {sorted(roots)}"
+
+    referenced = {down for down in revisions.values() if down is not None}
+    # Exactly one revision may be unreferenced: the head of the chain.
+    heads = ids - referenced
+    assert len(heads) == 1, f"expected exactly one head revision, found {sorted(heads)}"
+
+    walked = []
+    current = next(iter(heads))
+    while current is not None:
+        assert current not in walked, f"cycle detected at {current}"
+        walked.append(current)
+        current = revisions[current]
+
+    assert set(walked) == ids, (
+        f"revisions unreachable from the head: {sorted(ids - set(walked))}"
+    )
 
 
 def test_revisions_only_define_upgrade_and_downgrade(repo: Path) -> None:

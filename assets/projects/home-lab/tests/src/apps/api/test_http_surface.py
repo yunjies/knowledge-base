@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import importlib
 
-import fastapi.testclient
 import pytest
+from fastapi.testclient import TestClient
 
 ROUTE_MODULES = [
     "apps.api.routes_library",
@@ -51,7 +51,7 @@ def test_route_module_declares_a_router(module_name: str) -> None:
 
 def test_health_endpoint_contract() -> None:
     """`/health` answers with the stable identity the compose healthchecks poll."""
-    client = fastapi_testclient.TestClient(_app_or_fail())
+    client = TestClient(_app_or_fail())
     response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
@@ -60,7 +60,7 @@ def test_health_endpoint_contract() -> None:
 
 
 def test_version_endpoint_reports_the_package_version() -> None:
-    client = fastapi_testclient.TestClient(_app_or_fail())
+    client = TestClient(_app_or_fail())
     body = client.get("/version").json()
     assert body["name"] == "home-media-pilot"
     assert body["version"]
@@ -81,8 +81,12 @@ def test_cors_origins_are_read_from_the_environment(monkeypatch: pytest.MonkeyPa
 
 
 def test_exposed_routes_cover_every_documented_capability() -> None:
-    """Assemble the route table and check the documented capability groups exist."""
-    paths = {route.path for route in _app_or_fail().routes}
+    """Read the assembled route table and check each documented group exists.
+
+    The OpenAPI schema is used rather than `app.routes` because included routers
+    appear there only as opaque mounts.
+    """
+    paths = set(_app_or_fail().openapi().get("paths", {}))
     for expected in (
         "/health",
         "/library/scan",
