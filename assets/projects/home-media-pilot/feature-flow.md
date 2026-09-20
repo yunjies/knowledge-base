@@ -24,6 +24,100 @@ flowchart TD
     AGENT_SESSION --> AGENT_DONE(["会话结果已记录"])
 ```
 
+## BOOTSTRAP
+
+容器启动时把数据库模式推进到迁移链的表头，然后才开始服务。这一步先于 `START`：它决定应用能否对外提供请求。
+
+模式由迁移链作者，而非由模型推断。API 路由逐请求调用 `create_all`，若不在启动时先迁移，建表就会由模型完成，schema 与迁移链的分歧随之被掩盖；先迁移使分歧表现为一次启动失败，而不是逐请求失败。
+
+库已有迁移标记时直接推进；库中有表但无标记（由更早的容器以模型建出）时，先记为已在表头再推进，避免重放迁移链与既有表冲突；库为空时正常推进整条链。
+
+```mermaid
+flowchart TD
+    START_BOOT(["容器启动"]) --> HAS_MARKER{"库中存在迁移标记？"}
+    HAS_MARKER -- 是 --> UPGRADE["推进到迁移链表头"]
+    HAS_MARKER -- 否 --> HAS_TABLES{"库中已有表？"}
+    HAS_TABLES -- 是 --> STAMP["记为已在表头"]
+    HAS_TABLES -- 否 --> UPGRADE
+    STAMP --> UPGRADE
+    UPGRADE --> UP_OK{"推进成功？"}
+    UP_OK -- 否 --> BOOT_ERROR(["启动失败：不提供服务"])
+    UP_OK -- 是 --> BOOT_DONE(["开始服务"])
+```
+
+实现取回处为 `src/apps/api/migrate.py`，容器内的调用顺序见 `docker/api-entrypoint.sh`；模式与分支由 `tests/src/apps/api/test_migrate.py` 的用例钉住。
+
+### START_BOOT
+
+容器入口触发，先于 HTTP 服务。输入是运行环境注入的数据库连接。
+
+- 输入参数：
+  - `database_url`：字符串；来源为运行环境，缺省时取工程内的默认库路径
+- 输出参数：
+  - `schema_target`：迁移链表头；去向为 `HAS_MARKER`
+
+### HAS_MARKER
+
+以库中是否存在迁移标记判断迁移链是否已接管该库。
+
+- 输入参数：
+  - `schema_target`：迁移链表头；来源为 `START_BOOT`
+- 输出参数：
+  - `needs_stamp`：布尔；去向为 `HAS_TABLES`，库中有表但无标记时为真
+
+### HAS_TABLES
+
+区分空库与"有表但无标记"的库。
+
+- 输入参数：
+  - `needs_stamp`：布尔；来源为 `HAS_MARKER`
+- 输出参数：
+  - `stamp_required`：布尔；去向为 `STAMP` 或 `UPGRADE`
+
+### STAMP
+
+把无标记但已有表的库记为已在迁移链表头，使后续推进不重放既有迁移。
+
+- 输入参数：
+  - `stamp_required`：布尔；来源为 `HAS_TABLES`
+- 输出参数：
+  - `recorded_at`：迁移链表头；去向为 `UPGRADE`
+
+### UPGRADE
+
+把库推进到迁移链表头。这是模式唯一的作者。
+
+- 输入参数：
+  - `recorded_at`：迁移链表头；来源为 `STAMP`，或直接来自 `HAS_MARKER` 的已接管分支
+- 输出参数：
+  - `upgrade_result`：成败；去向为 `UP_OK`
+
+### UP_OK
+
+判定推进结果。失败即终止启动，不以未迁移的库对外服务。
+
+- 输入参数：
+  - `upgrade_result`：成败；来源为 `UPGRADE`
+- 输出参数：
+  - `boot_verdict`：枚举；去向为 `BOOT_DONE` 或 `BOOT_ERROR`
+
+### BOOT_DONE
+
+迁移完成，HTTP 服务开始接受请求，进入主流程的 `START`。
+
+- 输入参数：
+  - `boot_verdict`：枚举；来源为 `UP_OK`
+- 输出参数：
+  - `service_ready`：布尔；去向为 `START`
+
+### BOOT_ERROR
+
+迁移失败的出口。进程不以未迁移的库对外服务。
+
+- 输入参数：
+  - `boot_verdict`：枚举；来源为 `UP_OK`
+- 输出参数：无
+
 ## START
 
 运维人员通过 WebUI 或 CLI 进入系统。两者都不直接访问外部服务，全部业务执行落在应用服务边界上。
