@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from packages.adapters.errors import ProviderError
+from packages.frameworks.errors import ProviderError
 from packages.application.acquisition import AcquisitionService
 from packages.contracts.acquisition import AcquisitionPreviewRequest
 from packages.domain.states import ErrorCategory
@@ -226,7 +226,7 @@ def test_state_view_keeps_landing_and_visibility_independent(session: Session) -
 def test_state_view_reports_filesystem_landing_when_probed(
     session: Session, tmp_path
 ) -> None:
-    from packages.adapters.filesystem import FilesystemLandingReadOnlyAdapter
+    from packages.providers.storage.filesystem import FilesystemLandingReadOnlyAdapter
 
     landing = tmp_path / "landing"
     landing.mkdir()

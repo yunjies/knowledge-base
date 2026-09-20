@@ -1,4 +1,4 @@
-"""Mirrors `packages/adapters`: error contract and read-only filesystem probing."""
+"""Mirrors `packages/providers`: error contract and read-only filesystem probing."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from packages.adapters.errors import ProviderError
-from packages.adapters.filesystem import FilesystemLandingReadOnlyAdapter
+from packages.frameworks.errors import ProviderError
+from packages.providers.storage.filesystem import FilesystemLandingReadOnlyAdapter
 from packages.domain.states import ErrorCategory
 
 
@@ -59,9 +59,9 @@ def test_filesystem_adapter_flags_a_non_directory(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "adapter_module",
     [
-        "packages.adapters.qbittorrent",
-        "packages.adapters.mteam",
-        "packages.adapters.jellyfin",
+        "packages.providers.downloader.qbittorrent",
+        "packages.providers.resource.mteam",
+        "packages.providers.player.jellyfin",
     ],
 )
 def test_read_only_adapters_expose_no_mutation_methods(adapter_module: str) -> None:

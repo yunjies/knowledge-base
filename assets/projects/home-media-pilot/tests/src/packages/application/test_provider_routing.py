@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from packages.adapters.errors import ProviderError
-from packages.application.providers.retry import retry_provider_call
-from packages.application.providers.routing import ProviderRouter
+from packages.frameworks.errors import ProviderError
+from packages.application.provider_retry import retry_provider_call
+from packages.application.provider_routing import ProviderRouter
 from packages.contracts.providers import MediaLibraryConfig
 from packages.domain.states import ErrorCategory
-from packages.platform.providers import ProviderRegistry, ProviderType
+from packages.frameworks.providers import ProviderRegistry, ProviderType
 
 
 class _Provider:
@@ -163,7 +163,7 @@ def test_mutation_is_disabled_for_every_builtin_provider() -> None:
 
 
 def test_duplicate_provider_id_is_rejected() -> None:
-    from packages.platform.providers import ProviderDefinition
+    from packages.frameworks.providers import ProviderDefinition
 
     registry = ProviderRegistry()
     duplicate = ProviderDefinition(

@@ -44,11 +44,64 @@ def test_declared_python_version_matches_running_interpreter(repo: Path) -> None
         "packages/infrastructure/db/session.py",
         "packages/infrastructure/library/paths.py",
         "packages/infrastructure/library/roots.py",
-        "packages/infrastructure/providers/factory.py",
     ],
 )
 def test_infrastructure_modules_are_present(repo: Path, module_path: str) -> None:
     assert (repo / module_path).is_file(), f"missing module: {module_path}"
+
+
+@pytest.mark.parametrize(
+    "module_path",
+    [
+        "packages/frameworks/providers.py",
+        "packages/frameworks/errors.py",
+        "packages/frameworks/provider_stack.py",
+        "packages/frameworks/builtin_services.py",
+        "packages/frameworks/metadata/port.py",
+        "packages/frameworks/metadata/registry.py",
+        "packages/frameworks/subtitles/port.py",
+        "packages/frameworks/subtitles/registry.py",
+    ],
+)
+def test_framework_modules_are_present(repo: Path, module_path: str) -> None:
+    assert (repo / module_path).is_file(), f"missing module: {module_path}"
+
+
+@pytest.mark.parametrize(
+    "module_path",
+    [
+        "packages/providers/storage/filesystem.py",
+        "packages/providers/player/jellyfin.py",
+        "packages/providers/resource/mteam.py",
+        "packages/providers/downloader/qbittorrent.py",
+        "packages/providers/metadata/tvmaze.py",
+        "packages/providers/metadata/metatube.py",
+        "packages/providers/subtitles/opensubtitles.py",
+    ],
+)
+def test_provider_modules_are_present(repo: Path, module_path: str) -> None:
+    assert (repo / module_path).is_file(), f"missing module: {module_path}"
+
+
+def test_frameworks_import_no_concrete_provider(repo: Path) -> None:
+    """Framework modules other than the binding seams must not name a provider.
+
+    Two modules bind implementations to the type-keyed registries:
+    `provider_stack.py` (metadata and subtitle routing) and
+    `builtin_services.py` (player, resource and downloader services). Every
+    other framework module states contracts only; a stray import there would
+    make the layer depend on the implementations it exists to abstract.
+    """
+    binding_seams = {"provider_stack.py", "builtin_services.py"}
+    framework_root = repo / "packages" / "frameworks"
+    offenders = [
+        f"{module.relative_to(repo)}: {line}"
+        for module in framework_root.rglob("*.py")
+        if module.name not in binding_seams
+        for line in module.read_text().splitlines()
+        if line.startswith(("from packages.providers", "import packages.providers"))
+    ]
+    assert offenders == [], f"framework modules import concrete providers: {offenders}"
 
 
 def test_secret_store_module_is_present_and_used_by_its_importers(repo: Path) -> None:
