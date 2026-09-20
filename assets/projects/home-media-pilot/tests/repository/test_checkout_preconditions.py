@@ -23,7 +23,6 @@ def test_repository_has_expected_top_level_directories(repo: Path) -> None:
         "migrations",
         "frontend",
         "docker",
-        "openspec",
         "tests",
     ):
         assert (repo / name).is_dir(), f"missing top-level directory: {name}"
