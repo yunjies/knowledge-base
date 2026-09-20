@@ -1,3 +1,9 @@
+# Everything the suite writes at run time. One ignored directory holds it all,
+# so `git status` never shows run output and a fresh clone never carries one.
+.artifacts/
 __pycache__/
-report.json
 .pytest_cache/
+
+# Superseded by .artifacts/report.json; kept so an older checkout that still
+# wrote the report to the tests/ root does not start reporting it as untracked.
+report.json

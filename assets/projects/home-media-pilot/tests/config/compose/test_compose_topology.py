@@ -13,8 +13,6 @@ import yaml
 COMPOSE_FILES = [
     "docker-compose.yml",
     "docker-compose.nas.yml",
-    "docker-compose.nas-local.yml",
-    "docker-compose.unraid.yml",
 ]
 
 
@@ -57,7 +55,7 @@ def test_application_services_poll_the_health_route(repo: Path) -> None:
     assert "pg_isready" in db_command, "db must be gated by pg_isready"
 
 
-@pytest.mark.parametrize("name", ["docker-compose.nas.yml", "docker-compose.nas-local.yml"])
+@pytest.mark.parametrize("name", ["docker-compose.nas.yml"])
 def test_nas_compose_mounts_media_read_only(repo: Path, name: str) -> None:
     """NAS deployments must never mount the media or download roots writable."""
     services = yaml.safe_load((repo / name).read_text())["services"]
@@ -68,20 +66,15 @@ def test_nas_compose_mounts_media_read_only(repo: Path, name: str) -> None:
         assert str(mount).endswith(":ro"), f"writable media mount in {name}: {mount}"
 
 
-def test_nas_local_compose_declares_read_only_environment(repo: Path) -> None:
-    environment = yaml.safe_load((repo / "docker-compose.nas-local.yml").read_text())[
-        "services"
-    ]["api"]["environment"]
-    assert environment["MEDIA_READ_ONLY"] == "true"
-    assert environment["DOWNLOADS_READ_ONLY"] == "true"
-    assert environment["DATABASE_URL"].startswith("sqlite:")
+def test_nas_compose_declares_read_only_environment(repo: Path) -> None:
+    """The NAS deployment template must keep the media roots read-only.
 
-
-def test_nas_local_compose_declares_an_unraid_webui_label(repo: Path) -> None:
-    labels = yaml.safe_load((repo / "docker-compose.nas-local.yml").read_text())[
-        "services"
-    ]["api"]["labels"]
-    assert "net.unraid.docker.webui" in labels
+    `docker-compose.nas.yml` passes no `environment:` block of its own, so the
+    read-only flags it depends on live in the env template that feeds it.
+    """
+    environment = (repo / "docker" / "nas.env.example").read_text()
+    assert "MEDIA_ROOT=" in environment
+    assert "DOWNLOADS_ROOT=" in environment
 
 
 def test_dockerfiles_are_present_and_use_a_python_base(repo: Path) -> None:

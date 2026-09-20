@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 
 from _harness.paths import repository_root
 
-CLI_DIR = "apps/cli"
+CLI_DIR = "src/apps/cli"
 
 
 def test_every_cli_module_is_present(repo: Path) -> None:

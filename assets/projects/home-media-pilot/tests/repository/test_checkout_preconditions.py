@@ -18,14 +18,22 @@ from _harness.paths import repository_root
 
 def test_repository_has_expected_top_level_directories(repo: Path) -> None:
     for name in (
-        "apps",
-        "packages",
-        "migrations",
-        "frontend",
+        "src",
         "docker",
         "tests",
     ):
         assert (repo / name).is_dir(), f"missing top-level directory: {name}"
+
+
+def test_source_packages_sit_under_src(repo_src: Path) -> None:
+    """The business code is separated from the build and deploy inputs."""
+    for name in (
+        "apps",
+        "packages",
+        "migrations",
+        "frontend",
+    ):
+        assert (repo_src / name).is_dir(), f"missing package directory: src/{name}"
 
 
 def test_declared_python_version_matches_running_interpreter(repo: Path) -> None:
@@ -46,8 +54,8 @@ def test_declared_python_version_matches_running_interpreter(repo: Path) -> None
         "packages/infrastructure/library/roots.py",
     ],
 )
-def test_infrastructure_modules_are_present(repo: Path, module_path: str) -> None:
-    assert (repo / module_path).is_file(), f"missing module: {module_path}"
+def test_infrastructure_modules_are_present(repo_src: Path, module_path: str) -> None:
+    assert (repo_src / module_path).is_file(), f"missing module: {module_path}"
 
 
 @pytest.mark.parametrize(
@@ -63,8 +71,8 @@ def test_infrastructure_modules_are_present(repo: Path, module_path: str) -> Non
         "packages/frameworks/subtitles/registry.py",
     ],
 )
-def test_framework_modules_are_present(repo: Path, module_path: str) -> None:
-    assert (repo / module_path).is_file(), f"missing module: {module_path}"
+def test_framework_modules_are_present(repo_src: Path, module_path: str) -> None:
+    assert (repo_src / module_path).is_file(), f"missing module: {module_path}"
 
 
 @pytest.mark.parametrize(
@@ -79,11 +87,11 @@ def test_framework_modules_are_present(repo: Path, module_path: str) -> None:
         "packages/providers/subtitles/opensubtitles.py",
     ],
 )
-def test_provider_modules_are_present(repo: Path, module_path: str) -> None:
-    assert (repo / module_path).is_file(), f"missing module: {module_path}"
+def test_provider_modules_are_present(repo_src: Path, module_path: str) -> None:
+    assert (repo_src / module_path).is_file(), f"missing module: {module_path}"
 
 
-def test_frameworks_import_no_concrete_provider(repo: Path) -> None:
+def test_frameworks_import_no_concrete_provider(repo_src: Path) -> None:
     """Framework modules other than the binding seams must not name a provider.
 
     Two modules bind implementations to the type-keyed registries:
@@ -93,9 +101,9 @@ def test_frameworks_import_no_concrete_provider(repo: Path) -> None:
     make the layer depend on the implementations it exists to abstract.
     """
     binding_seams = {"provider_stack.py", "builtin_services.py"}
-    framework_root = repo / "packages" / "frameworks"
+    framework_root = repo_src / "packages" / "frameworks"
     offenders = [
-        f"{module.relative_to(repo)}: {line}"
+        f"{module.relative_to(repo_src)}: {line}"
         for module in framework_root.rglob("*.py")
         if module.name not in binding_seams
         for line in module.read_text().splitlines()
@@ -104,14 +112,14 @@ def test_frameworks_import_no_concrete_provider(repo: Path) -> None:
     assert offenders == [], f"framework modules import concrete providers: {offenders}"
 
 
-def test_secret_store_module_is_present_and_used_by_its_importers(repo: Path) -> None:
+def test_secret_store_module_is_present_and_used_by_its_importers(repo_src: Path) -> None:
     """The credential store must exist and still be the one its callers import."""
-    secrets_module = repo / "packages" / "infrastructure" / "secrets.py"
+    secrets_module = repo_src / "packages" / "infrastructure" / "secrets.py"
     assert secrets_module.is_file(), "missing module: packages/infrastructure/secrets.py"
 
     importers = [
-        repo / "packages" / "application" / "libraries.py",
-        repo / "apps" / "api" / "routes_phase4.py",
+        repo_src / "packages" / "application" / "libraries.py",
+        repo_src / "apps" / "api" / "routes_phase4.py",
     ]
     for importer in importers:
         assert "packages.infrastructure.secrets import CredentialStore" in (

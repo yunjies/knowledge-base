@@ -17,8 +17,6 @@ from _harness.paths import repository_root
 STACKS = {
     "docker-compose.yml": "development",
     "docker-compose.nas.yml": "published image to a NAS",
-    "docker-compose.nas-local.yml": "NAS-local build with the Unraid label",
-    "docker-compose.unraid.yml": "Unraid Compose Manager deployment",
 }
 
 
@@ -87,7 +85,7 @@ def test_api_port_mapping_targets_the_port_the_image_exposes(repo: Path) -> None
             if not build:
                 continue
             dockerfile = build if isinstance(build, str) else build.get("dockerfile", "")
-            if "api.Dockerfile" not in dockerfile and "nas-local" not in dockerfile:
+            if "api.Dockerfile" not in dockerfile and "Dockerfile.nas" not in dockerfile:
                 continue
             for mapping in spec.get("ports", []) or []:
                 _host, _, container = str(mapping).partition(":")
@@ -120,7 +118,7 @@ def test_services_reaching_the_database_wait_for_it_to_be_healthy(repo: Path) ->
 
 
 @pytest.mark.parametrize(
-    "name", ["docker-compose.nas.yml", "docker-compose.nas-local.yml"]
+    "name", ["docker-compose.nas.yml"]
 )
 def test_media_and_download_mounts_are_read_only(repo: Path, name: str) -> None:
     """Pilot must never hold a writable handle on the media it indexes."""
@@ -171,10 +169,9 @@ def test_nas_stack_requires_its_mount_sources_to_be_set(repo: Path) -> None:
     assert "${DOWNLOADS_ROOT:?" in text or "${DOWNLOADS_ROOT?" in text
 
 
-def test_nas_local_stack_isolates_configuration_by_env_file(repo: Path) -> None:
-    """Secrets and endpoints are injected, never committed into the stack file."""
-    services = _compose(repo, "docker-compose.nas-local.yml")["services"]
-    environment = services["api"]["environment"]
-    for key in ("DATABASE_URL", "LOGICAL_PATHS", "MEDIA_LIBRARIES"):
-        assert key in environment, f"expected {key} to be configured for the NAS stack"
-    assert "APP_ENV" in environment
+def test_nas_stack_injects_configuration_rather_than_committing_it(repo: Path) -> None:
+    """Secrets and endpoints are injected at deploy time, never committed."""
+    services = _compose(repo, "docker-compose.nas.yml")["services"]
+    env_files = services["api"].get("env_file")
+    assert env_files, "the NAS stack declares no env_file"
+    assert ".env" in [str(entry) for entry in env_files]

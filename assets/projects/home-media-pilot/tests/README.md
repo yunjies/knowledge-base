@@ -1,6 +1,6 @@
 # Home Media Pilot 测试流程
 
-本文档描述 `tests/` 这套镜像测试套件如何从仓库结构推导出测试节点、每个节点验证什么、失败如何被归因，以及结果如何被复算。套件的组织原则是**镜像**：`src/Home-Media-Pilot` 下的每一类代码、配置与产物，在测试树中都有一处对应的节点，新增模块时其测试位置由它在仓库中的位置决定，而非另行约定。
+本文档描述 `tests/` 这套镜像测试套件如何从仓库结构推导出测试节点、每个节点验证什么、失败如何被归因，以及结果如何被复算。套件的组织原则是**镜像**：`src/Home-Media-Pilot` 下的每一类代码、配置与产物，在测试树中都有一处对应的节点，新增模块时其测试位置由它在仓库中的位置决定，而非另行约定。仓库本身把业务代码收在自己的 `src/` 下，根目录只留构建与部署输入；`tests/_harness/paths.py` 的 `repository_src()` 是这一层在套件中的单一承载。
 
 ## 主流程
 
@@ -55,7 +55,7 @@ flowchart TD
 
 定位被测仓库并把其根目录注入导入路径，使 `packages.*` 与 `apps.*` 可被导入。
 
-定位由 `tests/_harness/paths.py` 承担：从该文件自身向上逐级查找 `src/Home-Media-Pilot`，以其中的 `pyproject.toml` 作为命中标志。所有节点经由同一个函数取得仓库路径，因此镜像树整体搬迁时断言无需改动。
+定位由 `tests/_harness/paths.py` 承担：从该文件自身向上逐级查找 `src/Home-Media-Pilot`，以其中的 `pyproject.toml` 作为命中标志；业务代码的相对位置由同一模块的 `repository_src()` 给出。所有节点经由同一个函数取得仓库路径，因此镜像树整体搬迁时断言无需改动。
 
 - 输入参数：
   - `collected_nodes`：待执行节点集合；来源为 `HARVEST`
@@ -104,9 +104,9 @@ flowchart TD
 
 ### CHECK_SECRETS
 
-校验 `packages/infrastructure/secrets.py` 的存在性及其导入方仍依赖它。
+校验 `src/packages/infrastructure/secrets.py` 的存在性及其导入方仍依赖它。
 
-该模块被 `packages/application/libraries.py` 与 `apps/api/routes_phase4.py` 导入；删除它会使凡是传递到达二者的模块全部无法导入。此处断言的不只是文件存在，还包括这两个导入点没有被绕开。
+该模块被 `src/packages/application/libraries.py` 与 `src/apps/api/routes_phase4.py` 导入；删除它会使凡是传递到达二者的模块全部无法导入。此处断言的不只是文件存在，还包括这两个导入点没有被绕开。
 
 - 输入参数：
   - `checkout_facts`：仓库事实；来源为 `CHECK_DIRS`
@@ -163,7 +163,7 @@ flowchart TD
 
 ## DOMAIN_LAYER
 
-校验 `packages/domain`：下载生命周期状态机与错误分类枚举。
+校验 `src/packages/domain`：下载生命周期状态机与错误分类枚举。
 
 断言的是**状态机的可迁移集合**——哪些迁移被允许、哪些被拒绝——以及终态没有出边。这类不变量无法从调用点重建，是领域层相对其调用方的净增量。
 
@@ -174,7 +174,7 @@ flowchart TD
 
 ## CONTRACT_LAYER
 
-校验 `packages/contracts`：API 边界的输入校验。
+校验 `src/packages/contracts`：API 边界的输入校验。
 
 断言契约**拒绝什么**，而非接受什么：空路径列表、空名称、空来源标识必须被拒绝，可缺省字段必须有其文档化的默认值。契约的拒绝面是调用方无法从实现重建的约束。
 
@@ -185,7 +185,7 @@ flowchart TD
 
 ## INFRA_LAYER
 
-校验 `packages/infrastructure`：配置读取、脱敏、数据库模式与任务生命周期、逻辑路径映射。
+校验 `src/packages/infrastructure`：配置读取、脱敏、数据库模式与任务生命周期、逻辑路径映射。
 
 三条不变量在此固定：脱敏在任意嵌套深度对敏感键生效；任务状态迁移受固定允许集约束且已提交任务不重复创建；逻辑路径映射拒绝逃出根目录的相对路径。末者是只读安全的直接承载，无法从调用点重建。
 
@@ -196,7 +196,7 @@ flowchart TD
 
 ## ADAPTER_LAYER
 
-校验 `packages/adapters`：错误契约、只读文件探测、只读边界本身。
+校验 `src/packages/adapters`：错误契约、只读文件探测、只读边界本身。
 
 除逐方法断言外，本层以**结构性断言**守住只读边界：遍历各只读适配器类的公开方法，断言其中不出现 `add`、`delete`、`remove`、`move`、`rename`、`refresh`、`scan` 一类变更入口。该断言不依赖对某个具体方法的记忆，新增变更方法即触发。
 
@@ -207,7 +207,7 @@ flowchart TD
 
 ## APPLICATION_LAYER
 
-校验 `packages/application`：扫描与索引、元数据与字幕路由、重试边界、审批门、Agent 工具策略、自动化策略与调度表达式、后台任务运行。
+校验 `src/packages/application`：扫描与索引、元数据与字幕路由、重试边界、审批门、Agent 工具策略、自动化策略与调度表达式、后台任务运行。
 
 本层承载流程文档所述各业务流的核心断言，其中三处判据不可从别处重建：
 
@@ -224,7 +224,7 @@ flowchart TD
 
 ## APPS_LAYER
 
-校验 `apps/`：HTTP 路由面、CLI 命令面、两个常驻进程入口。
+校验 `src/apps/`：HTTP 路由面、CLI 命令面、两个常驻进程入口。
 
 HTTP 侧断言健康与版本路由的契约、CORS 来源的解析，以及能力路由确实被挂载；CLI 侧断言命令组注册与根命令行为；进程侧以源码断言入口可被 `python -m` 调用、能响应中断退出、并写出启动与停止日志。
 
@@ -237,7 +237,7 @@ HTTP 侧断言健康与版本路由的契约、CORS 来源的解析，以及能�
 
 ## FRONTEND_LAYER
 
-校验 `frontend/`：入口与挂载点、构建产物路径、API 基址可配置性、类型严格性，以及前端不做服务端变更。
+校验 `src/frontend/`：入口与挂载点、构建产物路径、API 基址可配置性、类型严格性，以及前端不做服务端变更。
 
 两条断言面向**跨文件一致性**：入口挂载的 DOM 标识必须存在于 `index.html`；分体部署所需的 API 基址必须可由环境变量覆盖。构建产物路径与 API 所服务目录之间当前未接通，该事实以断言形态固定，接通后该断言转为失败信号。
 
@@ -248,7 +248,7 @@ HTTP 侧断言健康与版本路由的契约、CORS 来源的解析，以及能�
 
 ## MIGRATION_LAYER
 
-校验 `migrations/`：修订标识唯一、父引用可解析、链的连通性、每个修订定义升降级。
+校验 `src/migrations/`：修订标识唯一、父引用可解析、链的连通性、每个修订定义升降级。
 
 本层断言链的**连通性**：修订标识唯一、父引用全部可解析、从唯一头节点回溯能恰好走遍全部修订、每个修订都定义升降级。链上任一处断裂都会使 `alembic upgrade head` 无法抵达头节点，这是断言所要排除的失败模式。
 
@@ -295,7 +295,7 @@ flowchart TD
 
 校验镜像构建契约：`COPY` 源在上下文内可解析、基础镜像与启动命令齐备、启动命令引用 `uv sync` 产出的解释器、迁移输入被拷入、NAS 入口在执行服务前先跑迁移、`.dockerignore` 排除机密物。
 
-生成物（`frontend/dist`）被 `.gitignore` 标记为产物时豁免，但套件同时断言**每条构建路径都先产出它**，使豁免不等于放任。
+生成物（`src/frontend/dist`）被 `.gitignore` 标记为产物时豁免，但套件同时断言**每条构建路径都先产出它**，使豁免不等于放任。
 
 - 输入参数：
   - `stack_evidence`：compose 校验证据；来源为 `COMPOSE_LAYER`
@@ -347,6 +347,8 @@ flowchart TD
 
 产物记录执行命令、退出码、起止时刻与输出尾部。产物是易失的，不应提交；其价值在于把某一次运行固定为可核对的记录。
 
+套件在运行期写出的每一个文件都落在 `tests/.artifacts/`——一个被 `tests/.gitignore` 整体忽略的目录。之所以不放进系统临时目录：产物的用途是事后复算一次运行，重启即丢的落点会让该用途失效。之所以集中到一处：`git status` 因此永远不显示运行输出，新增产物时也只需确认它落在这个目录内，而不是逐个往 ignore 规则里加。
+
 - 输入参数：
   - `pass_signal`：通过信号；来源为 `VERDICT`
 - 输出参数：
@@ -368,16 +370,16 @@ flowchart TD
 | 测试目录 | 对应的仓库位置 |
 | --- | --- |
 | `tests/repository/` | 仓库整体形状与其既成前提 |
-| `tests/src/packages/domain/` | `packages/domain/` |
-| `tests/src/packages/contracts/` | `packages/contracts/` |
-| `tests/src/packages/infrastructure/` | `packages/infrastructure/` |
-| `tests/src/packages/adapters/` | `packages/adapters/` |
-| `tests/src/packages/application/` | `packages/application/` |
-| `tests/src/apps/api/` | `apps/api/` |
-| `tests/src/apps/cli/` | `apps/cli/` |
-| `tests/src/apps/workers/` | `apps/worker.py`、`apps/scheduler.py` |
-| `tests/src/migrations/` | `migrations/` |
-| `tests/src/frontend/` | `frontend/` |
+| `tests/src/packages/domain/` | `src/packages/domain/` |
+| `tests/src/packages/contracts/` | `src/packages/contracts/` |
+| `tests/src/packages/infrastructure/` | `src/packages/infrastructure/` |
+| `tests/src/packages/adapters/` | `src/packages/adapters/` |
+| `tests/src/packages/application/` | `src/packages/application/` |
+| `tests/src/apps/api/` | `src/apps/api/` |
+| `tests/src/apps/cli/` | `src/apps/cli/` |
+| `tests/src/apps/workers/` | `src/apps/worker.py`、`src/apps/scheduler.py` |
+| `tests/src/migrations/` | `src/migrations/` |
+| `tests/src/frontend/` | `src/frontend/` |
 | `tests/config/compose/` | 四个 compose 文件：拓扑与栈运行契约 |
 | `tests/config/docker/` | `docker/*.Dockerfile`、`docker/*.sh`：镜像构建与启动契约 |
 | `tests/config/ci/` | `.github/workflows/`：容器构建与发布流水线 |

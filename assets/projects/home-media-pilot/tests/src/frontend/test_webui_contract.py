@@ -10,7 +10,7 @@ import pytest
 
 from _harness.paths import repository_root
 
-FRONTEND = "frontend"
+FRONTEND = "src/frontend"
 
 
 def test_frontend_entry_files_are_present(repo: Path) -> None:
@@ -46,7 +46,7 @@ def test_bundler_output_directory_is_not_wired_to_the_served_directory(
     state; wiring the two together makes it fail.
     """
     config = (repo / FRONTEND / "vite.config.ts").read_text()
-    api_main = (repo / "apps/api/main.py").read_text()
+    api_main = (repo / "src/apps/api/main.py").read_text()
     dockerfile = (repo / "docker/api.Dockerfile").read_text()
 
     assert "outDir" not in config, "vite now sets outDir; revisit this wiring test"

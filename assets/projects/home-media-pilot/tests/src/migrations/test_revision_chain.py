@@ -10,7 +10,7 @@ import pytest
 
 from _harness.paths import repository_root
 
-VERSIONS = "migrations/versions"
+VERSIONS = "src/migrations/versions"
 
 
 def _revision_files(repo: Path) -> list[Path]:

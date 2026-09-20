@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _harness.paths import (  # noqa: E402
     ensure_repository_importable,
     repository_root,
+    repository_src,
 )
 
 ensure_repository_importable()
@@ -24,3 +25,9 @@ ensure_repository_importable()
 @pytest.fixture(scope="session")
 def repo() -> Path:
     return repository_root()
+
+
+@pytest.fixture(scope="session")
+def repo_src() -> Path:
+    """The directory holding the importable packages, for path-shaped assertions."""
+    return repository_src()

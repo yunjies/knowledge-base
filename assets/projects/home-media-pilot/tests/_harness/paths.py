@@ -27,14 +27,19 @@ def repository_root() -> Path:
 
 
 def repository_src() -> Path:
-    """Return the repository root as a string path for `sys.path` injection."""
-    return repository_root()
+    """Return the directory holding the importable packages.
+
+    The repository keeps its business code under its own `src/`, so the
+    top-level import names (`packages.*`, `apps.*`) resolve from there rather
+    than from the repository root, which carries only build and deploy inputs.
+    """
+    return repository_root() / "src"
 
 
 def ensure_repository_importable() -> Path:
-    """Put the repository on `sys.path` so `packages.*` and `apps.*` import."""
+    """Put the package directory on `sys.path` so `packages.*` and `apps.*` import."""
     root = repository_root()
-    root_str = str(root)
-    if root_str not in sys.path:
-        sys.path.insert(0, root_str)
+    src_str = str(repository_src())
+    if src_str not in sys.path:
+        sys.path.insert(0, src_str)
     return root

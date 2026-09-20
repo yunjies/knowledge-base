@@ -89,13 +89,13 @@ def test_every_copy_source_resolves_inside_the_build_context(
 def test_generated_frontend_build_is_produced_before_every_image_build(
     repo: Path,
 ) -> None:
-    """`docker/Dockerfile.nas-local` copies `frontend/dist`; it must exist first.
+    """`docker/Dockerfile.nas-local` copies `src/frontend/dist`; it must exist first.
 
     Nothing in the Dockerfile builds the frontend, so the build depends on the
     caller having run `npm run build` against the same context.
     """
     text = (repo / "docker/Dockerfile.nas-local").read_text()
-    assert "COPY frontend/dist" in text, "the NAS image no longer copies a built frontend"
+    assert "COPY src/frontend/dist" in text, "the NAS image no longer copies a built frontend"
 
     producers = {
         "Makefile": (repo / "Makefile").read_text(),
@@ -157,7 +157,7 @@ def test_published_image_pins_the_uv_version(repo: Path) -> None:
 def test_published_image_carries_the_migration_inputs(repo: Path) -> None:
     """Migrations are only runnable inside the image if their inputs are copied."""
     text = (repo / "docker/api.Dockerfile").read_text()
-    assert "COPY migrations" in text
+    assert "COPY src/migrations" in text
     assert "COPY alembic.ini" in text
 
 
@@ -183,7 +183,7 @@ def test_nas_local_image_starts_via_its_entrypoint(repo: Path) -> None:
 def test_nas_local_image_ships_a_served_frontend_directory(repo: Path) -> None:
     """The WebUI routes need a built frontend at the directory the API serves."""
     text = (repo / "docker/Dockerfile.nas-local").read_text()
-    assert "COPY frontend/dist ./frontend-dist" in text
+    assert "COPY src/frontend/dist ./frontend-dist" in text
     assert "ENV FRONTEND_DIST=/app/frontend-dist" in text
 
 

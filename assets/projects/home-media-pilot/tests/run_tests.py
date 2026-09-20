@@ -14,7 +14,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 TESTS_ROOT = Path(__file__).resolve().parent
-DEFAULT_REPORT = TESTS_ROOT / "report.json"
+
+# Every file this suite writes lands under one ignored directory, so a run
+# never leaves anything for a reviewer to mistake for source. The directory is
+# deliberately outside `.pytest_cache/` (pytest owns that) and inside the tree
+# (unlike the system temporary directory, which a reboot discards): the report
+# exists to make one run reproducible later, so it must survive the run.
+ARTIFACTS_DIR = TESTS_ROOT / ".artifacts"
+DEFAULT_REPORT = ARTIFACTS_DIR / "report.json"
 
 
 def main() -> int:
@@ -39,6 +46,7 @@ def main() -> int:
         "stdout_tail": completed.stdout[-4000:],
         "stderr_tail": completed.stderr[-4000:],
     }
+    args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2))
 
     sys.stdout.write(completed.stdout)

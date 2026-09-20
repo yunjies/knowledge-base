@@ -10,7 +10,10 @@ __pycache__/
 *.so
 
 # 构建 / 打包产物
-build/
+# `build/` 必须锚定到仓库根：不锚定的规则会匹配任意层级的同名目录，
+# 而 tests/config/build/ 是镜像测试树的一个节点，被吞掉会让它的用例
+# 只在本地存在、clone 后静默消失（套件不会变红，只是少测一块）。
+/build/
 dist/
 *.egg-info/
 .eggs/
