@@ -47,6 +47,11 @@ flowchart TD
 
 实现取回处为 `src/apps/api/migrate.py`，容器内的调用顺序见 `docker/api-entrypoint.sh`；模式与分支由 `tests/src/apps/api/test_migrate.py` 的用例钉住。
 
+- 输入参数：
+  - `database_url`：字符串；来源为运行环境，缺省时取工程内的默认库路径
+- 输出参数：
+  - `service_ready`：布尔；去向为流程之外（调用方），表示服务已可接受请求
+
 ### START_BOOT
 
 容器入口触发，先于 HTTP 服务。输入是运行环境注入的数据库连接。
@@ -64,6 +69,7 @@ flowchart TD
   - `schema_target`：迁移链表头；来源为 `START_BOOT`
 - 输出参数：
   - `needs_stamp`：布尔；去向为 `HAS_TABLES`，库中有表但无标记时为真
+  - `recorded_at`：迁移链表头；去向为 `UPGRADE`，库中已有标记时直接推进
 
 ### HAS_TABLES
 
@@ -72,7 +78,7 @@ flowchart TD
 - 输入参数：
   - `needs_stamp`：布尔；来源为 `HAS_MARKER`
 - 输出参数：
-  - `stamp_required`：布尔；去向为 `STAMP` 或 `UPGRADE`
+  - `stamp_required`：布尔；去向为 `STAMP`
 
 ### STAMP
 
@@ -108,7 +114,7 @@ flowchart TD
 - 输入参数：
   - `boot_verdict`：枚举；来源为 `UP_OK`
 - 输出参数：
-  - `service_ready`：布尔；去向为 `START`
+  - `service_ready`：布尔；去向为流程之外（调用方），表示服务已可接受请求
 
 ### BOOT_ERROR
 
@@ -124,7 +130,7 @@ flowchart TD
 
 - 输入参数：无
 - 输出参数：
-  - `entry_channel`：枚举；去向为 `CONFIG_LIBRARY`，取值为 WebUI 或 CLI
+  - `entry_channel`：枚举；去向为流程之外（WebUI 或 CLI 请求方）
 
 ## CONFIG_LIBRARY
 
@@ -147,6 +153,15 @@ flowchart TD
     VALIDATE_PROVIDERS -- 是 --> PERSIST_LIBRARY["写入媒体库与路径绑定"]
     PERSIST_LIBRARY --> CFG_DONE(["媒体库可用于扫描"])
 ```
+
+- 输入参数：
+  - `library_name`：字符串；来源为工程部署位置（WebUI 或 CLI 的请求体）
+  - `logical_paths`：字符串列表；来源为工程部署位置
+  - `metadata_provider`：字符串，Provider 标识；来源为工程部署位置
+  - `subtitle_provider`：字符串，Provider 标识；来源为工程部署位置
+- 输出参数：
+  - `library_record`：媒体库记录；去向为 `CFG_DONE`
+  - `rejection`：错误响应；去向为流程之外（请求方）
 
 ### START_CFG
 
@@ -235,6 +250,11 @@ flowchart TD
     PERSIST_REPORT --> SCAN_DONE(["索引与报告可查询"])
     SCAN_FAILED --> SCAN_DONE
 ```
+
+- 输入参数：
+  - `logical_root`：字符串，逻辑根路径名；来源为工程部署位置（媒体库配置）
+- 输出参数：
+  - `scan_report`：扫描报告记录；去向为 `SCAN_DONE`
 
 ### START_SCAN
 
@@ -375,6 +395,14 @@ flowchart TD
     RES_ERROR --> RES_DONE
 ```
 
+- 输入参数：
+  - `library_id`：标识符；来源为工程部署位置（WebUI 或 CLI 的请求）
+  - `unmatched_only`：布尔；来源为工程部署位置
+  - `limit`：整数，条数上限；来源为工程部署位置
+- 输出参数：
+  - `resources`：资源清单；去向为 `RES_DONE`
+  - `error_response`：错误响应；去向为 `RES_DONE`
+
 ### START_RES
 
 资源清单流程入口，接收媒体库标识与查询条件。
@@ -476,6 +504,15 @@ flowchart TD
     MATCH_ERROR --> MATCH_DONE
 ```
 
+- 输入参数：
+  - `library_id`：标识符；来源为工程部署位置
+  - `media_id`：标识符；来源为工程部署位置
+- 输出参数：
+  - `match_session`：状态为已选择、含选定候选的会话；去向为 `METADATA_DONE`
+  - `lookup_error`：装载错误；去向为 `MATCH_ERROR`
+  - `routing_error`：路由错误；去向为 `MATCH_ERROR`
+  - `provider_error`：Provider 错误；去向为 `MATCH_ERROR`
+
 ### START_MATCH
 
 元数据匹配流程入口，接收媒体库标识与资源标识。
@@ -523,6 +560,7 @@ flowchart TD
 - 输入参数：
   - `search_request`：元数据检索请求；来源为 `BUILD_REQUEST`
   - `metadata_provider`：元数据 Provider 实例；来源为 `RESOLVE_PROVIDER`
+  - `retry_signal`：重试信号；来源为 `PROVIDER_OK` 的可重试分支
 - 输出参数：
   - `candidates`：候选列表；去向为 `PROVIDER_OK`
   - `provider_error`：带错误类别的 Provider 错误；去向为 `PROVIDER_OK`
@@ -584,6 +622,13 @@ flowchart TD
     PERSIST_SELECTION --> SELECT_DONE(["资源元数据已定稿"])
     SELECT_ERROR --> SELECT_DONE
 ```
+
+- 输入参数：
+  - `session_id`：标识符；来源为工程部署位置
+  - `candidate_index`：整数，候选下标；来源为工程部署位置
+- 输出参数：
+  - `match_session`：状态为已选择、含选定候选的会话；去向为 `METADATA_DONE`
+  - `error_response`：错误响应；去向为 `SELECT_DONE`
 
 ### START_SELECT
 
@@ -672,6 +717,12 @@ flowchart TD
     SUB_ERROR --> SUB_DONE
 ```
 
+- 输入参数：
+  - `library_id`：标识符；来源为工程部署位置
+  - `media_id`：标识符；来源为工程部署位置
+- 输出参数：
+  - `subtitle_candidates`：字幕候选列表；去向为 `SUBTITLE_DONE`
+
 ### START_SUB
 
 字幕搜索流程入口，接收媒体库标识与资源标识。
@@ -715,6 +766,11 @@ flowchart TD
 ### CALL_SUB_PROVIDER
 
 调用字幕 Provider 搜索候选，失败时按错误类别决定是否重试。
+
+- 输入参数：
+  - `subtitle_search_request`：字幕检索请求；来源为 `BUILD_SUB_REQUEST`
+  - `subtitle_provider`：字幕 Provider 实例；来源为 `RESOLVE_SUB_PROVIDER`
+  - `retry_signal`：重试信号；来源为 `SUB_OK` 的可重试分支
 
 - 输入参数：
   - `subtitle_search_request`：字幕检索请求；来源为 `BUILD_SUB_REQUEST`
@@ -786,6 +842,11 @@ flowchart TD
     MARK_SKIPPED --> SYNC_DONE
     SYNC_ERROR --> SYNC_DONE
 ```
+
+- 输入参数：
+  - `library_id`：标识符；来源为工程部署位置
+- 输出参数：
+  - `sync_item`：对账条目；去向为 `JELLYFIN_DONE`
 
 ### START_SYNC
 
@@ -924,6 +985,16 @@ flowchart TD
     BLOCK_ACQ --> ACQ_DONE
 ```
 
+- 输入参数：
+  - `source`：字符串，来源站标识；来源为工程部署位置
+  - `external_id`：字符串，来源站资源标识；来源为工程部署位置
+  - `title`：字符串；来源为工程部署位置
+  - `category`：字符串，下载分类；来源为工程部署位置
+  - `save_path`：字符串，保存路径；来源为工程部署位置
+  - `media_id`：标识符，可空；来源为工程部署位置
+- 输出参数：
+  - `approval_state`：含来源站、审批、下载客户端、文件系统与媒体库可见性各阶段事实的证据视图；去向为 `ACQUIRE_DONE`
+
 ### START_ACQ
 
 获取流程入口，接收来源、外部标识、标题、分类、保存路径与媒体标识。
@@ -1058,6 +1129,12 @@ flowchart TD
 
 获取证据视图。按阶段分别呈现来源站、审批、下载客户端、文件系统与媒体库可见性的事实；文件落地由只读探测得出，媒体库可见性保持未知。
 
+- 输入参数：
+  - `submitted_result`：含状态、审批标识、任务标识、外部任务标识与回读内容的提交结果；来源为 `MARK_COMPLETED`
+  - `failure_result`：无法由回读验证的失败错误；来源为 `SUBMIT_FAILED`
+- 输出参数：
+  - `approval_state`：含来源站、审批、下载客户端、文件系统与媒体库可见性各阶段事实的证据视图；去向为 `ACQ_DONE`
+
 ```mermaid
 flowchart TD
     START_STATE(["查询获取证据"]) --> LOAD_APPROVAL{"审批记录存在？"}
@@ -1106,6 +1183,7 @@ flowchart TD
 
 - 输入参数：
   - `approval_record`：审批记录；来源为 `LOAD_APPROVAL`
+  - `task_record`：任务记录，可为空；来源为 `READ_TASK`
 - 输出参数：
   - `tracker_fact`：状态为已验证的来源站事实；去向为 `APPROVAL_FACT`
 
@@ -1115,6 +1193,7 @@ flowchart TD
 
 - 输入参数：
   - `approval_record`：审批记录；来源为 `LOAD_APPROVAL`
+  - `tracker_fact`：状态为已验证的来源站事实；来源为 `TRACKER_FACT`
 - 输出参数：
   - `approval_fact`：含审批状态的审批事实；去向为 `QB_FACT`
 
@@ -1125,6 +1204,7 @@ flowchart TD
 - 输入参数：
   - `task_record`：任务记录，可为空；来源为 `READ_TASK`
   - `approval_record`：审批记录，提供状态；来源为 `LOAD_APPROVAL`
+  - `approval_fact`：含审批状态的审批事实；来源为 `APPROVAL_FACT`
 - 输出参数：
   - `qb_fact`：含状态与证据的下载客户端事实；去向为 `FS_FACT`
 
@@ -1134,6 +1214,7 @@ flowchart TD
 
 - 输入参数：
   - `approval_record`：审批记录，提供保存路径；来源为 `LOAD_APPROVAL`
+  - `qb_fact`：含状态与证据的下载客户端事实；来源为 `QB_FACT`
 - 输出参数：
   - `filesystem_fact`：含探测证据的文件系统事实；去向为 `PLAYER_FACT`
 
@@ -1170,6 +1251,7 @@ flowchart TD
 
 - 输入参数：
   - `blocked_error`：阻断错误；来源为 `BLOCK_ACQ`
+  - `approval_state`：含来源站、审批、下载客户端、文件系统与媒体库可见性各阶段事实的证据视图；来源为 `ACQUIRE`
 - 输出参数：无
 
 ## ACQUIRE_DONE
@@ -1208,6 +1290,13 @@ flowchart TD
     RECORD_REPORT --> WISH_DONE(["报告可查询"])
     WISH_ERROR --> WISH_DONE
 ```
+
+- 输入参数：
+  - `query`：字符串，检索词；来源为工程部署位置
+  - `media_type`：字符串，媒体类型；来源为工程部署位置
+  - `status`：字符串，初始状态；来源为工程部署位置
+- 输出参数：
+  - `check_report`：候选检查报告；去向为 `WISHLIST_DONE`
 
 ### START_WISH
 
@@ -1254,7 +1343,8 @@ flowchart TD
 
 - 输入参数：
   - `wishlist_item`：许愿单条目；来源为 `CREATE_WISH` 或 `RETURN_WISH`
-- 输出参数：无
+- 输出参数：
+  - `wishlist_item`：许愿单条目；去向为 `CHECK_WISH` 与 `WISH_ACTIVE`
 
 ### SCHEDULE_CREATE
 
@@ -1271,6 +1361,7 @@ flowchart TD
 触发一次许愿单检查。判据是许愿单处于进行中。
 
 - 输入参数：
+  - `scheduled_job`：含标识符、调度表达式、启用状态与下次运行时刻的定时作业；来源为 `SCHEDULE_CREATE`
   - `wishlist_item`：许愿单条目；来源为 `WISH_READY`
 - 输出参数：
   - `search_request`：由许愿单派生的来源站检索请求；去向为 `WISH_ACTIVE`
@@ -1377,6 +1468,11 @@ flowchart TD
     AGENT_ERROR --> AGENT_DONE
 ```
 
+- 输入参数：
+  - `title`：字符串，会话标题；来源为工程部署位置
+- 输出参数：
+  - `agent_message`：会话结果消息；去向为 `AGENT_DONE`
+
 ### START_AGENT
 
 Agent 流程入口，建立一个会话。
@@ -1398,6 +1494,10 @@ Agent 流程入口，建立一个会话。
 ### INVOKE_TOOL
 
 接收一次工具调用，记录用户消息后进入校验。
+
+- 输入参数：
+  - `agent_session`：Agent 会话；来源为 `START_AGENT`
+  - `tool_catalog`：含工具名与属性的注册清单；来源为 `TOOL_LIST`
 
 - 输入参数：
   - `tool_name`：字符串，工具名；来源为工程部署位置

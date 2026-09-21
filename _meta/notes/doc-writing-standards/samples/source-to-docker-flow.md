@@ -101,7 +101,7 @@ docker compose up -d --build
 
 **输入**
 
-- `SOURCE_CHECKOUT`：路径；来源为 `START_WITH_SOURCE`。
+- `SOURCE_CHECKOUT`：路径；来源为工程部署位置，或在重试时来自 `DEV_FIX`。
 
 **输出**
 
@@ -222,7 +222,7 @@ flowchart TB
 
 **输入**
 
-- `SOURCE_CHECKOUT`：路径；来源为 `START_WITH_SOURCE`。
+- `SOURCE_CHECKOUT`：路径；来源为工程部署位置，或在重试时来自 `CI_FIX`。
 
 **输出**
 
@@ -406,6 +406,7 @@ flowchart TB
 **输出**
 
 - `needs_stamp`：布尔；去向为 `BOOT_HAS_TABLES`
+- `recorded_at`：迁移链表头；去向为 `BOOT_UPGRADE`，库中已有标记时直接推进
 
 #### BOOT_HAS_TABLES
 
@@ -417,7 +418,7 @@ flowchart TB
 
 **输出**
 
-- `stamp_required`：布尔；去向为 `BOOT_STAMP` 或 `BOOT_UPGRADE`
+- `stamp_required`：布尔；去向为 `BOOT_STAMP`
 
 #### BOOT_STAMP
 
