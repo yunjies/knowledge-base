@@ -1,0 +1,20 @@
+name: documentation guard
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      # The guard reads the repository and nothing else, so it needs no service
+      # container, no database and no browser. It writes its cache inside the
+      # repository, which on this runner is free to do so.
+      - name: Run the documentation guard
+        run: ./_lint/run.sh

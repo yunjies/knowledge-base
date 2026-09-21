@@ -89,13 +89,19 @@ def flow_documents() -> list[Path]:
 
 
 def instruction_documents() -> list[Path]:
-    """The documents that instruct an agent: the root file and every README.
+    """The documents that instruct an agent.
 
-    Both are read as instructions, so both are held to the hygiene rules.
+    Three sets, discovered rather than listed. The root file; every README,
+    since a README is read as instructions too; and everything under `_meta/`,
+    which holds the execution and writing constraints themselves. Leaving
+    `_meta/` out was a real gap: the very document that states the counting rule
+    was the one document the counting rule never read.
     """
     root = repository_root()
+    meta = root / "_meta"
     out = [root / "AGENTS.md"]
     out.extend(path for path in all_documents() if path.name == "README.md")
+    out.extend(path for path in all_documents() if meta in path.parents)
     return sorted({path for path in out if path.is_file()})
 
 
