@@ -16,7 +16,14 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".uv-cache"}
+SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".uv-cache", ".agents"}
+
+# `.agents/` is not a layer of this knowledge base: it is a skill distribution
+# root, scanned by the harness rather than read as knowledge-base documentation.
+# Its `reference/` files carry the criterion-register copies that ship with each
+# skill, so their wording is the skill package's to decide. Judging them by this
+# repository's writing constraints would report failures whose cause has nothing
+# to do with this repository's documents.
 
 # A project's own checkout is another repository with its own history and
 # conventions; the knowledge base states that its internal layout is the

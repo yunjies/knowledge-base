@@ -1,6 +1,6 @@
 # 知识库文档守护
 
-本目录把[文档撰写规范](../../_meta/doc-writing-constraints.md)与[流程类文档撰写规范](../../_meta/notes/doc-writing-standards/process-doc-writing-constraints.md)中**可机械判定**的那部分落成可执行的检查。规范说应当怎么写，这里判定是否真的这么写了；两者分开存放，改判据不动用例，改用例也不悄悄重定义判据。
+本目录把[文档撰写规范](../.agents/skills/doc-writing/reference/doc-writing-constraints.md)与[流程类文档撰写规范](../.agents/skills/process-doc-writing/reference/process-doc-writing-constraints.md)中**可机械判定**的那部分落成可执行的检查。规范说应当怎么写，这里判定是否真的这么写了；两者分开存放，改判据不动用例，改用例也不悄悄重定义判据。
 
 ## 主流程图
 
@@ -10,6 +10,7 @@ flowchart TB
   DISCOVER[["文档发现"]]
   FLOW_GATES[["流程文档判据"]]
   PROSE_GATES[["散文判据"]]
+  PLACEMENT_GATE[["分层判据"]]
   GUARD[["运行期守卫"]]
   LINT_VERDICT{"用例全绿且退出码为 0？"}
   LINT_FIX["读失败信息定位缺陷并按判据修正文档"]
@@ -17,8 +18,10 @@ flowchart TB
   START_LINT --> DISCOVER
   DISCOVER --> FLOW_GATES
   DISCOVER --> PROSE_GATES
+  DISCOVER --> PLACEMENT_GATE
   FLOW_GATES --> GUARD
   PROSE_GATES --> GUARD
+  PLACEMENT_GATE --> GUARD
   GUARD --> LINT_VERDICT
   LINT_VERDICT -->|"是"| LINT_PASS
   LINT_VERDICT -->|"否"| LINT_FIX
@@ -146,7 +149,7 @@ flowchart TB
 
 **输出**
 
-- `SCOPE_READY`：扫描面；去向为 `FLOW_GATES` 与 `PROSE_GATES`。
+- `SCOPE_READY`：扫描面；去向为 `FLOW_GATES`、`PROSE_GATES` 与 `PLACEMENT_GATE`。
 
 ## FLOW_GATES
 
@@ -292,6 +295,73 @@ flowchart TB
 
 - `PROSE_VERDICT`：散文判定；去向为 `GUARD`。
 
+## PLACEMENT_GATE
+
+本节点承载分层判据：判定一条信息是否归它所在的目录，而不是判定它写得对不对。本节点不出分支，唯一出边通向 `GUARD`。
+
+**形态与分层是两件事，这道门禁的存在理由正是前者盖不住后者**：一份文档可以把 F01–F08 与 D02/D03 全部满足，却仍然放在错误的目录里——规范被读了、行文干净，而信息归档在读者不会去找的地方。两种失败的代价不同：形态缺陷是局部的、就地可修；分层缺陷意味着这份记录是某个有权威承载处的东西的副本，从写下的那天起就与该权威分叉，而分叉不可见，因为两份文本各自都合规。
+
+```mermaid
+flowchart TB
+  PL_SCAN["枚举 assets/notes/ 下的笔记"]
+  PL_PLACE{"笔记是否点名了某项目克隆内的路径？"}
+  PL_OFFEND(["判为放错层：应迁入该项目的流程文档"])
+  PL_OK(["分层判据通过"])
+  PL_SCAN --> PL_PLACE
+  PL_PLACE -->|"是"| PL_OFFEND
+  PL_PLACE -->|"否"| PL_OK
+```
+
+### PL_SCAN
+
+枚举 `assets/notes/` 下的全部笔记（README 除外）。**发现而非登记**：靠遍历得到，不靠一份清单——清单本身就是第二事实源，新增笔记若忘记登记，它就对守护不存在。
+
+**输入**
+
+- `SCOPE_READY`：扫描面；来源为 `DISC_DONE`。
+
+**输出**
+
+- `NOTE_DOCS`：待判定的笔记路径；去向为 `PL_PLACE`。
+
+### PL_PLACE
+
+执行 `assets/notes/README.md` 的准入判据中可判定的那一条：笔记进 `assets/notes/`，当且仅当它**跨会话仍成立**且**没有别处可放**。判据是第二条——一条点名了 `assets/projects/<项目>/<仓库>/…` 的笔记，就是在描述那个项目，而本知识库已把该项目的已实现流程写在 `assets/projects/<项目>/feature-flow.md`。
+
+**能力边界必须写成断言**：本判据只覆盖**点名了克隆内路径**的笔记，因为这些路径是副本会逐字带上的东西。用自然语言复述了某个项目流程、却一个路径都没提的笔记，模式抓不到——它与「恰好提到该项目的正常跨会话笔记」在文本上无从区分。绿灯因此**不等于**归层正确，见本文末的判断项一节。
+
+**输入**
+
+- `NOTE_DOCS`：待判定的笔记路径；来源为 `PL_SCAN`。
+
+**输出**
+
+- `NOTE_DOCS`：已判定的笔记路径；去向为 `PL_OFFEND` 或 `PL_OK`。
+
+### PL_OFFEND
+
+判为放错层的出口：该笔记描述的是某个项目，而本知识库已把那个项目的流程写在它的 `feature-flow.md`。**处置是迁移而非删除**——把内容按流程文档形态并入该项目文档，然后整篇删除笔记；`assets/notes/` 不留「已废弃」式存档。
+
+**输入**
+
+- `NOTE_DOCS`：判为放错层的笔记；来源为 `PL_PLACE`。
+
+**输出**
+
+- `placement_defect`：放错层的判定；去向为 `GUARD`。
+
+### PL_OK
+
+分层判据通过的出口：`assets/notes/` 下没有点名项目克隆内部的笔记。**这不等于该目录内所有笔记都归层正确**——未点名路径的复述副本抓不到，见判断项一节。
+
+**输入**
+
+- `NOTE_DOCS`：未点名项目内部的笔记；来源为 `PL_PLACE`。
+
+**输出**
+
+- `placement_defect`：无放错层的判定，值为空；去向为 `GUARD`。
+
 ## GUARD
 
 本节点承载运行期守卫：三条使「全绿」可信的检查，以及门禁自身的元守护。本节点不出分支，唯一出边通向 `LINT_VERDICT`。
@@ -324,6 +394,7 @@ flowchart TB
 
 - `FLOW_VERDICT`：流程文档判定；来源为 `FG_DONE`。
 - `PROSE_VERDICT`：散文判定；来源为 `PG_DONE`。
+- `placement_defect`：放错层的判定；来源为 `PL_OFFEND` 或 `PL_OK`。
 
 **输出**
 
@@ -449,6 +520,7 @@ UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q
 | `test_flowdoc_reachability.py` | F05 每节点可达完成节点 |
 | `test_flowdoc_params.py` | F07 参数栏齐备与边两侧落地 |
 | `test_flowdoc_blueprint.py` | F08 蓝图绘自身图、内层节点成章 |
+| `test_doc_placement.py` | `assets/notes/` 准入判据的「没有别处可放」一条：笔记不得描述某个项目克隆内部 |
 | `test_suite_integrity.py` | 门禁花名册与守卫钩子 |
 
 ## 判断项：本目录**不**判定的部分
@@ -460,5 +532,6 @@ UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q
 - **F03 的标识符是否贴切**：可判定的是形态（大写英文记号），判不了这个记号是否选得准。
 - **D02 的未带单位转述**：「本工程有两种落地形态」这类副本不带单位，模式抓不到。带单位的计数已覆盖。
 - **D03 的非编号引用**：不写成编号的引用（「见上一次讨论」）不可寻址，无法与普通行文区分。
+- **分层判据的未点名情形**：一条用自然语言复述了某个项目流程、却未点名任何克隆内路径的笔记，与「恰好提到该项目的正常跨会话笔记」在文本上无从区分。`test_doc_placement.py` 只覆盖点名了路径的那一类。**这条缺口是有代价的**：本目录的全绿只说明已被覆盖的那一类成立，不说明 `assets/notes/` 里没有放错层的文档——判层靠人读该目录 README 的准入判据。
 - **D04–D09**：陈述当前状态、不采纳会话视角、不承载推导、不确定表述有边界、语言不混用、修订不变命题——全部是语义判据，本目录不涉。
 - **C01–C05**：agent 执行约束，与文档形态无关。
