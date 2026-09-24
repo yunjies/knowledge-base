@@ -20,8 +20,14 @@ flowchart TB
   GRID --> ACTION{"用户点了哪个动作"}
   ACTION -->|"设置/替换"| WRITE["写单个值"]
   ACTION -->|"移除"| UNSET["删单个 ref"]
+  ACTION -->|"配置免密登录"| BSSELECT["填目标机并读指纹"]
   WRITE --> LIST
   UNSET --> LIST
+  BSSELECT --> BSCONFIRM{"你确认指纹了吗"}
+  BSCONFIRM -->|"未确认"| BSWAIT(["停在确认步，不提交密码"])
+  BSCONFIRM -->|"已确认"| BSINSTALL["生成密钥并装公钥"]
+  BSINSTALL --> BSDONE(["私钥与 config 已就位"])
+  BSINSTALL -->|"登录失败或远端拒绝"| BSFAIL(["报错并删除密码文件"])
   TOOL --> PROBE(["模型自查凭证就绪度"])
 ```
 
@@ -247,6 +253,102 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 - id 未知：拒绝且不触达 seam。
 - 只读来源遮蔽：透传 seam 原话。
+
+## BSSELECT
+
+用户在设置页的「为另一台机器配置免密登录」里填入地址、端口、账号（别名可留空自动生成），点「读取指纹」。本节点只做一件事：用 `ssh-keyscan` 读目标机的主机公钥。
+
+**这一步不提交任何凭据。** `ssh-keyscan` 只做密钥交换，目标机学不到任何可重放的东西；指纹显示给用户确认，密码仍留在输入框里。
+
+**输入**
+
+- `USER_ACTION`：用户填入的目标描述；来源为界面交互。
+
+**输出**
+
+- `HOST_FINGERPRINT`：目标机公钥指纹与原始 known_hosts 行；去向为 `BSCONFIRM`。
+
+**失败模式**
+
+- 主机名不合法：拒绝且不启动任何子进程。
+- 目标机不可达或未返回公钥：报错并停在 `BSSELECT`，此时未提交任何凭据。
+
+## BSCONFIRM
+
+本节点是主图的分叉点：由**用户**判断目标机身份是否可信。确认则走 `BSINSTALL`，未确认则走 `BSWAIT`。
+
+本节点不判断技术条件，只承载一个事实：**第一次连接没有可对照的信任锚**。指纹由前一步显示，但「这是不是真的目标机」只能由人来判断——界面在此把提交密码的按钮**禁用**，而不是提示后放行。
+
+**输入**
+
+- `HOST_FINGERPRINT`：目标机公钥指纹；来源为 `BSSELECT`。
+- `USER_CONFIRM`：用户的确认动作；来源为界面交互。
+
+**输出**
+
+- `CONFIRMED`：已确认的目标描述与密码；去向为 `BSINSTALL`。
+- `UNCONFIRMED`：未确认状态；去向为 `BSWAIT`。
+
+## BSWAIT
+
+未确认时的出口：密码留在输入框，不发起任何连接。本节点不是终止态——用户确认指纹后可回到 `BSINSTALL`；它是**密码不得离开本机**这一约束在流程上的落点。
+
+**输入**
+
+- `UNCONFIRMED`：未确认状态；来源为 `BSCONFIRM`。
+
+**输出**
+
+- `USER_CONFIRM`：用户后续的确认；去向为 `BSINSTALL`。
+
+## BSINSTALL
+
+本机生成 ed25519 密钥对，用密码登录一次把公钥追加到目标机 `authorized_keys`，再写本机私钥与 `~/.ssh/config` 段。
+
+**密码的生命周期在这一次调用内闭合**：先经 `shell`/`fs` 落成一个仅本用户可读的临时文件（写入后回读该文件的权限位校验，不符即删除并报错；权限取值与判据见 [工程 README](dsh-credentials/README.md)），ssh 经 `SSH_ASKPASS_REQUIRE=force` 指向的 askpass 程序从该文件读取。密码**不进 argv**、**不进环境变量**（该处可经 `/proc/<pid>/environ` 读到，故弃用）、**不进逐字记录**；三条候选传递路径的比对见 [测试说明](dsh-credentials/tests/README.md)。
+
+临时文件的删除在 `finally`：成功、失败、抛错三条路都删。
+
+**输入**
+
+- `CONFIRMED`：已确认的目标描述与密码；来源为 `BSCONFIRM`。
+- `USER_CONFIRM`：在 `BSWAIT` 停留后补上的确认；来源为 `BSWAIT`。到达时与 `CONFIRMED` 同义。
+
+**输出**
+
+- `BOOTSTRAP_DONE`：已完成的步骤、写入本机的文件清单、敏感项告警；去向为 `BSDONE`。
+- `BOOTSTRAP_FAILURE`：失败原因（已剔除密码形状的片段）与已完成的步骤；去向为 `BSFAIL`。
+
+**失败模式**
+
+- 本机已存在同名私钥：拒绝，不覆盖——那可能是用户通往该机的既有通路。
+- `~/.ssh/config` 已有同别名条目：拒绝，不覆写用户手写的选项。
+- 远端登录失败：报错并把该行密码提示剔除后回显；密码文件照删。
+- 私钥落盘：owner-only 权限，**无 passphrase**（这是自动化密钥，与「免密」目的冲突），代价是任何读到该文件者可免密登录目标机。
+
+## BSDONE
+
+成功出口：私钥、公钥、`~/.ssh/config` 段均已就位，此后可用别名直接登录。本节点是终止态，不再回到主干。
+
+**输入**
+
+- `BOOTSTRAP_DONE`：步骤与写入清单；来源为 `BSINSTALL`。
+
+**输出**
+
+无。
+
+## BSFAIL
+
+失败出口：原因已回显、密码文件已删除、本机可能残留已写入的私钥。本节点是终止态——用户能改的是输入（换别名、核对密码）或目标机（自查 sshd 配置），不是本插件的运行环境。
+
+**输入**
+
+- `BOOTSTRAP_FAILURE`：失败原因与已完成步骤；来源为 `BSINSTALL`。
+
+**输出**
+
+无。
 
 ## DEGRADE
 
