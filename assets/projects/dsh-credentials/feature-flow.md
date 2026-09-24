@@ -27,7 +27,9 @@ flowchart TB
 
 ## START
 
-DSH 在自己的进程与页面里加载本插件，把运行所需的服务交付给两侧。本插件只落在 **cordis 形态**：宿主侧由动态包或 preset 行挂载，浏览器侧由客户端包挂载。
+DSH 在自己的进程与页面里加载本插件，把运行所需的服务交付给两侧。工程有**两种落地形态**——cordis 与 bundle——二者共享全部业务逻辑，只有 `adapters/` 分叉；形态由构建期决定，不由业务模块决定。本流程描述的主干两形态通用，差异集中在 `MOUNT`。
+
+**截至本文档更新时，实际在跑的只有 cordis 形态的动态包**；bundle 形态的源码与构建产物已就位，但**未注册进任何 profile**，因而从未装配过。
 
 **输入**
 
@@ -40,9 +42,20 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 ## MOUNT
 
-两侧各自的唯一装配入口：把端口实现与业务对象拼起来，并让每个副作用可释放。宿主侧经 `src/host/adapters/cordis/index.ts` 的 `apply()`，把 `ctx.get('credentials')` 与 `harness` 包成 `HostPorts`，构造 `CredentialCatalog`，再交 `src/host/tool.ts` 的 `register()`；客户端侧经 `src/client/adapters/cordis/index.ts` 的 `apply()`，把 `host.call` 与 `slots` 包成 `ClientPorts`，交 `src/client/index.ts` 的 `mount()`。
+两侧各自的唯一装配入口：把端口实现与业务对象拼起来，并让每个副作用可释放。本节点是**唯一按形态分叉**的节点——两种形态的差别到此为止，向下的 section 注册、工具定义、读清单、写入、移除完全相同。
 
-`seam()` 在 seam 缺失时返回 `undefined` 而非抛错：目录仍要能列出「有哪些凭证」，即使这台机器一个都写不了。`register()` 返回的每个 disposer 都由 fiber 持有，插件停止、更新或移除时一并撤下。
+形态分叉在构建期完成：`src/{host,client}/adapters/index.ts` 是形态无关入口，`loader-configs/build.json` 的 `adapters` 声明它在两种形态下分别解析到哪个实现。因此**运行时看不到分叉**，只有产物不同。
+
+| 形态 | 宿主通信 | 客户端通信 |
+| --- | --- | --- |
+| **cordis** | `harness.handle` 注册 Package 私有方法 | `host.call` |
+| **bundle** | profile `webServer` 上注册 `/dsh-credentials/api` 前缀路由 | 同源 `fetch` POST |
+
+宿主侧装配链（两形态同形）：端口实现 → `CredentialCatalog` → `src/host/tool.ts` 的 `register()`。客户端侧装配链（两形态同形）：`ClientPorts` → `src/client/index.ts` 的 `mount()`。
+
+`seam()` 在 seam 缺失时返回 `undefined` 而非抛错：目录仍要能列出「有哪些凭证」，即使这台机器一个都写不了。`register()` 与形态适配器返回的每个 disposer 都由 fiber 持有，插件停止、更新或移除时一并撤下。
+
+**截至本文档更新时，bundle 形态从未装配过**，因此上表 bundle 一列描述的是源码意图，不是实测行为。
 
 **输入**
 
@@ -272,6 +285,10 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 2. `GRID` 环节——该页在真实浏览器里渲染出来。本仓库对 React 的依赖经 `src/client/adapters/cordis` 注入，单测覆盖的是渲染前的纯决策（分组、摘要文案、徽章、可写性），不是渲染本身；
 3. `WRITE` 环节——值经**本仓库源码**的路径真的写进 `$DSH_HOME/.credentials.yaml`。
 
-**为何不能就地补**：本工程目前只以动态包的形式在跑，而动态包是**进程内**的，随进程重启消失。要取到上述三条证据，必须先把本仓库装成 preset 行或 bundle 形态并在真实会话里跑一次——那一步尚未进行。在它完成前，本流程文档描述的 `SECTION` 至 `WRITE` 一段属于**按契约落库、未经活体验证**。
+**为何不能就地补**：本工程目前只以**动态 cordis 包**的形式在跑，而动态包是**进程内**的，随进程重启消失。要取到上述三条证据，必须先把本仓库装成 preset 行或 bundle 形态并在真实会话里跑一次——那一步尚未进行。在它完成前，本流程文档描述的 `SECTION` 至 `WRITE` 一段属于**按契约落库、未经活体验证**。
+
+**bundle 形态的证据层次更低一档**：源码已实现，两形态都构建通过（`npm run build:bundle` / `build:cordis`，判据为退出码 0 且产物非空），传输契约有单测覆盖；但它**从未被挂载过**，因此上表 bundle 一列连「装配起来不报错」都没有实测。`bundle.patch.yml` 携带可挂载的行而刻意不注册，就是为了让挂载保持为一个单独、显式的动作。
+
+**形态转换不在单测层验证**：`npm test` 驱动的是模块，不是编译器。转换是否成功由构建命令的退出码提供证据。
 
 **已由单测守住的部分**：目录结构不变量、状态映射、写前拒绝、无路径返回值、工具定义的两套 schema 方言形状、两半 RPC 词汇一致、dispose 解挂。跑法与判据见 [tests/README.md](dsh-credentials/tests/README.md)：`npm test`，全绿且退出码为 0。
