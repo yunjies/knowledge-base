@@ -78,6 +78,12 @@ logs/
 # 不是本知识库的一部分，因此整目录排除，避免把外部仓库嵌成 submodule 或快照。
 assets/projects/home-media-pilot/home-media-pilot/
 
+# assets/projects/dsh-credentials/dsh-credentials 同理：DSH 凭证插件的独立仓库，
+# 远端为 github.com/yunjies/dsh-credentials。它的测试属于该项目（判据见 AGENTS.md
+# 「测试」节：断言对象是某个项目的实现即属该项目），因此整目录排除，不在本知识库
+# 内另存一份副本；本知识库对它的权威描述是同级 feature-flow.md。
+assets/projects/dsh-credentials/dsh-credentials/
+
 # 同理，若出现其它独立克隆的仓库目录也一并排除
 assets/projects/*/*/.git/
 
