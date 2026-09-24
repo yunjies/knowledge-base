@@ -1,6 +1,6 @@
 # dsh-credentials 凭证初始化与管理流程
 
-本文档描述 `dsh-credentials` 已实现的流程：DSH 加载本插件后，宿主侧把凭证目录接到凭证 seam 并注册模型工具与三条 RPC，浏览器侧在设置面板注册一个「凭证」页；用户在该页写入一个值，值单向流入本机凭证库，状态回流到页面与模型。文档覆盖流程的主干、分叉点、失败出口，以及每个环节的输入输出。
+本文档描述 `dsh-credentials` 已实现的流程：DSH 加载本插件后，宿主侧把凭证目录接到凭证 seam 并注册模型工具与三条 RPC，浏览器侧在设置面板注册一个「凭证」页；用户在该页写入一个值，值单向流入本机凭证库，状态回流到页面与模型。文档覆盖流程的主干、分叉点、失败出口，以及每个环节的输入输出；末节 [未验证面](#未验证面) 列出已实现但证据尚未取到的环节，读到的部分未经验证时以该节为准。
 
 本工程的源码在 [dsh-credentials/](dsh-credentials/)（自带 `.git` 与远端），下文所有路径与命令都以该目录为工程根。
 
@@ -11,12 +11,14 @@ flowchart TB
   START(["DSH 加载插件"]) --> MOUNT["两侧装配"]
   MOUNT --> SECTION["注册设置 section"]
   MOUNT --> TOOL["注册模型工具与 RPC"]
+  MOUNT -->|"defineTool 拒绝定义"| MOUNT_FAIL(["宿主半启动失败，插件停在未激活态"])
   SECTION --> OPEN["用户打开「凭证」页"]
   OPEN --> LIST["读凭证清单"]
   LIST --> RENDER{"存储是否就位"}
   RENDER -->|"就位"| GRID["按领域分组渲染，标注状态与来源"]
   RENDER -->|"未挂载"| DEGRADE(["降级渲染并写明不可用"])
-  GRID --> ACTION{"用户点了哪个动作"}  ACTION -->|"设置/替换"| WRITE["写单个值"]
+  GRID --> ACTION{"用户点了哪个动作"}
+  ACTION -->|"设置/替换"| WRITE["写单个值"]
   ACTION -->|"移除"| UNSET["删单个 ref"]
   WRITE --> LIST
   UNSET --> LIST
@@ -50,6 +52,30 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 - `PORTS_READY`：两侧端口就位；去向为 `SECTION`、`TOOL`。
 - `DISPOSERS`：每个注册的释放器；去向为运行期的 fiber。
+- `MOUNT_REFUSAL`：装配被运行期拒绝；去向为 `MOUNT_FAIL`。
+
+**失败模式**
+
+本节点有两条失败出口，**处置方式刻意不同**：
+
+- 端口构造失败（`credentials` 或 `slots` 服务缺失）：两侧都是可选读取，`seam()` 返回 `undefined`、`slots` 分支返回空释放器——**不抛错、不中止装配**。插件照常起来，代价只是部分能力不可用（宿主报 `no-store`，页面不注册）。这条不走 `MOUNT_FAIL`。
+- `defineTool` 拒绝定义：**宿主半整体启动失败**，插件停在未激活态，走 `MOUNT_FAIL`。一个只注册了半边的插件比没有插件更难诊断，因此这里不降级。
+
+## MOUNT_FAIL
+
+宿主半在 `harness.defineTool` 处被运行期拒绝时的终止出口：插件不进入 `currentPackageId`，停在 `nextPackageId`，宿主半的 RPC 与工具**一个都没有注册**，客户端半即使起来了也无处可调。
+
+拒绝原因是结构性的，不是运行环境的偶然——`defineTool` 校验的是定义本身的形状。已知会被拒的有三类：缺 `output` 声明；`output.schema` 里用了对象级 `required` 数组；`parameters` 根声明了 `additionalProperties`。这些都由单测的形状锁守卫，见 [tests/README.md](dsh-credentials/tests/README.md)。
+
+本节点是终止态，不出边：能修的是定义，不是运行环境。
+
+**输入**
+
+- `MOUNT_REFUSAL`：装配被运行期拒绝；来源为 `MOUNT`。
+
+**输出**
+
+- 无。
 
 ## SECTION
 
@@ -233,3 +259,19 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 **输出**
 
 - `PROBE_RESULT`：状态与来源的清单，或写入结果；**不含值**；去向为模型回合。
+
+## 未验证面
+
+本节记录**已实现但尚未取到证据**的环节，使只读本流程文档的人不会把未验证的部分当成已验证。判据是「这条证据是否只有真实环境才提供」——下列三条都属活体面，不能由单测替代。
+
+**已取到的证据**：与本工程源码同契约的**动态 Cordis 包**在真实 DSH 进程里激活成功——宿主半注册了工具与三条 RPC（`catalog`／`save`／`remove`），客户端半状态为 `running`，`currentPackageId` 已落到该包。这证明的是**契约可用**，不是**本仓库源码可用**。
+
+**尚未取到的证据**：
+
+1. `SECTION` 环节——设置面板的导航里真的出现「凭证」页；
+2. `GRID` 环节——该页在真实浏览器里渲染出来。本仓库对 React 的依赖经 `src/client/adapters/cordis` 注入，单测覆盖的是渲染前的纯决策（分组、摘要文案、徽章、可写性），不是渲染本身；
+3. `WRITE` 环节——值经**本仓库源码**的路径真的写进 `$DSH_HOME/.credentials.yaml`。
+
+**为何不能就地补**：本工程目前只以动态包的形式在跑，而动态包是**进程内**的，随进程重启消失。要取到上述三条证据，必须先把本仓库装成 preset 行或 bundle 形态并在真实会话里跑一次——那一步尚未进行。在它完成前，本流程文档描述的 `SECTION` 至 `WRITE` 一段属于**按契约落库、未经活体验证**。
+
+**已由单测守住的部分**：目录结构不变量、状态映射、写前拒绝、无路径返回值、工具定义的两套 schema 方言形状、两半 RPC 词汇一致、dispose 解挂。跑法与判据见 [tests/README.md](dsh-credentials/tests/README.md)：`npm test`，全绿且退出码为 0。
