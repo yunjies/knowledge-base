@@ -35,7 +35,7 @@ flowchart TB
 
 DSH 在自己的进程与页面里加载本插件，把运行所需的服务交付给两侧。工程有**两种落地形态**——cordis 与 bundle——二者共享全部业务逻辑，只有 `adapters/` 分叉；形态由构建期决定，不由业务模块决定。本流程描述的主干两形态通用，差异集中在 `MOUNT`。
 
-**截至本文档更新时，实际在跑的只有 cordis 形态的动态包**；bundle 形态的源码与构建产物已就位，但**未注册进任何 profile**，因而从未装配过。
+**两形态都已有活体证据**：cordis 形态以动态包在真实 DSH 进程里激活；bundle 形态在专用 profile `e2e-credentials` 里经 `dsh plugin add file:<pkg>`（官方挂载通道）装成行并跑通页面与业务面。bundle 形态仍**未注册进本仓库的任何 profile**，因而挂载是一个单独、显式的动作。
 
 **输入**
 
@@ -61,7 +61,7 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 `seam()` 在 seam 缺失时返回 `undefined` 而非抛错：目录仍要能列出「有哪些凭证」，即使这台机器一个都写不了。`register()` 与形态适配器返回的每个 disposer 都由 fiber 持有，插件停止、更新或移除时一并撤下。
 
-**截至本文档更新时，bundle 形态从未装配过**，因此上表 bundle 一列描述的是源码意图，不是实测行为。
+上表 bundle 一列已实测：宿主侧前缀路由由真实 `webServer` 注册并分发（未服务的操作答 404），客户端侧经同源 `fetch` POST 真实往返。
 
 **输入**
 
@@ -309,6 +309,8 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 临时文件的删除在 `finally`：成功、失败、抛错三条路都删。
 
+**远端命令是 `sh -s -- <公钥>`，脚本经 stdin 送达。** `sh -s` 从 **stdin** 读脚本，所以「脚本真的到了远端」由 `run()` 是否接上子进程的 stdin 决定，而不是由命令行的形状决定——两形态的端口都曾收下 `stdin` 参数然后丢掉它（见 [测试说明](dsh-credentials/tests/README.md) 的「两形态的 `run()` 都丢掉 `stdin`」）。丢掉时的表现是 `sh` 什么都没跑、**退出码 0**、没有 `INSTALLED`，于是本节点的守卫报出一条读起来像成功的失败。
+
 **输入**
 
 - `CONFIRMED`：已确认的目标描述与密码；来源为 `BSCONFIRM`。
@@ -377,20 +379,18 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 ## 未验证面
 
-本节记录**已实现但尚未取到证据**的环节，使只读本流程文档的人不会把未验证的部分当成已验证。判据是「这条证据是否只有真实环境才提供」——下列三条都属活体面，不能由单测替代。
+本节记录**已实现但尚未取到证据**的环节，使只读本流程文档的人不会把未验证的部分当成已验证。判据是「这条证据是否只有真实环境才提供」。
 
-**已取到的证据**：与本工程源码同契约的**动态 Cordis 包**在真实 DSH 进程里激活成功——宿主半注册了工具与三条 RPC（`catalog`／`save`／`remove`），客户端半状态为 `running`，`currentPackageId` 已落到该包。这证明的是**契约可用**，不是**本仓库源码可用**。
+**主干的三条活体证据均已取到**（真实 Chromium + 真实 DSH 进程）：
 
-**尚未取到的证据**：
+1. `SECTION`——设置面板导航里真的出现「凭证」页（实测导航为 `General, Models, Plugins, 凭证, Agent presets`）；
+2. `GRID`——该页真的渲染出目录行与摘要行，无 slot 崩溃；
+3. `WRITE`——值经**本仓库源码**的路径真的写进 `$DSH_HOME/.credentials.yaml`（redirect 后的 provider 文件），且任何回包都不含该值。
 
-1. `SECTION` 环节——设置面板的导航里真的出现「凭证」页；
-2. `GRID` 环节——该页在真实浏览器里渲染出来。本仓库对 React 的依赖经 `src/client/adapters/cordis` 注入，单测覆盖的是渲染前的纯决策（分组、摘要文案、徽章、可写性），不是渲染本身；
-3. `WRITE` 环节——值经**本仓库源码**的路径真的写进 `$DSH_HOME/.credentials.yaml`。
+**bundle 形态已实测**：装配、注册、路由、页面、业务面都有活体证据（`tests/e2e/` 的宿主探针 + `tests/live-mount-probe.mjs` 的装配探针）。`bundle.patch.yml` 仍携带可挂载的行而**刻意不注册**，使挂载保持为一个单独、显式的动作。
 
-**为何不能就地补**：本工程目前只以**动态 cordis 包**的形式在跑，而动态包是**进程内**的，随进程重启消失。要取到上述三条证据，必须先把本仓库装成 preset 行或 bundle 形态并在真实会话里跑一次——那一步尚未进行。在它完成前，本流程文档描述的 `SECTION` 至 `WRITE` 一段属于**按契约落库、未经活体验证**。
+**两形态都能转换**：`npm run build:bundle` 与 `npm run build:cordis` 均退出 0 且产物非空（`dist/bundle/{index.mjs,client.js}`、`dist/cordis/cred/{host-body.js,client-body.js}`）。cordis body 内无静态 `import`（`new Function` 不接受，判据可现取：`grep -cE "^\s*import[\s(]" dist/cordis/cred/*.js` 为 0）。
 
-**bundle 形态的证据层次更低一档**：源码已实现，两形态都构建通过（`npm run build:bundle` / `build:cordis`，判据为退出码 0 且产物非空），传输契约有单测覆盖；但它**从未被挂载过**，因此上表 bundle 一列连「装配起来不报错」都没有实测。`bundle.patch.yml` 携带可挂载的行而刻意不注册，就是为了让挂载保持为一个单独、显式的动作。
+**`BSDONE` 证到哪一步，说清楚**：安装**跑完**这一段已取到证据——公钥装到远端、私钥按 0600 落盘、`~/.ssh/config` 段写全、远端脚本经 stdin 真的执行（`tests/e2e/bootstrap-success.e2e.mjs`）；凭据也确实送到了真实 sshd（`install-path.e2e.mjs`）。**但「密码认证对真实服务器成功」没有取到**，因为这台机器上做不到：sshd 需要可读的 shadow 条目，而 `/etc/shadow` 是 `root:shadow` 0640、`/etc/pam.d` 与 `/etc/nsswitch.conf` 只读、无 `uidmap`、无 `sudo`、无容器运行时（逐条实测见 [测试说明](dsh-credentials/tests/README.md) 的「密码认证在这台机器上做不到」）。`bootstrap-success` 因此用 `PATH` 上的 `ssh` 替身顶掉「一台会接受密码的服务器」这一件，其余全是本仓库自己的代码。换一台有 root 或已装 `uidmap` 的机器即可补上，届时把替身换回真 `ssh`。
 
-**形态转换不在单测层验证**：`npm test` 驱动的是模块，不是编译器。转换是否成功由构建命令的退出码提供证据。
-
-**已由单测守住的部分**：目录结构不变量、状态映射、写前拒绝、无路径返回值、工具定义的两套 schema 方言形状、两半 RPC 词汇一致、dispose 解挂。跑法与判据见 [tests/README.md](dsh-credentials/tests/README.md)：`npm test`，全绿且退出码为 0。
+**已由单测守住的部分**：目录结构不变量、状态映射、写前拒绝、无路径返回值、工具定义的两套 schema 方言形状、两半 RPC 词汇一致、dispose 解挂、两形态端口对 `stdin`/`env` 的传递、适配器入口不写死形态。跑法与判据见 [tests/README.md](dsh-credentials/tests/README.md)：`npm test`，全绿且退出码为 0。
