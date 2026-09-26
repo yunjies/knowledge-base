@@ -1,6 +1,6 @@
 # dsh-credentials 凭证初始化与管理流程
 
-本文档描述 `dsh-credentials` 已实现的流程：DSH 加载本插件后，宿主侧把凭证目录接到凭证 seam 并注册模型工具与三条 RPC，浏览器侧在设置面板注册一个「凭证」页；用户在该页写入一个值，值单向流入本机凭证库，状态回流到页面与模型。文档覆盖流程的主干、分叉点、失败出口，以及每个环节的输入输出；末节 [未验证面](#未验证面) 列出已实现但证据尚未取到的环节，读到的部分未经验证时以该节为准。
+本文档描述 `dsh-credentials` 已实现的流程：DSH 加载本插件后，宿主侧把凭证目录接到凭证 seam 并注册模型工具与 RPC，浏览器侧在设置面板注册一个「凭证」页；用户在该页写入一个值，值单向流入本机凭证库，状态回流到页面与模型。SSH 这一域另有自己的流程：一条密码引导路径负责**建立**免密能力，一张目标面板负责**使用**它并报告它现在还通不通。文档覆盖流程的主干、分叉点、失败出口，以及每个环节的输入输出；末节 [未验证面](#未验证面) 列出已实现但证据尚未取到的环节，读到的部分未经验证时以该节为准。
 
 本工程的源码在 [dsh-credentials/](dsh-credentials/)（自带 `.git` 与远端），下文所有路径与命令都以该目录为工程根。
 
@@ -17,17 +17,20 @@ flowchart TB
   LIST --> RENDER{"存储是否就位"}
   RENDER -->|"就位"| GRID["按领域分组渲染，标注状态与来源"]
   RENDER -->|"未挂载"| DEGRADE(["降级渲染并写明不可用"])
+  GRID --> TARGETS[["列出已配置的 SSH 目标"]]
   GRID --> ACTION{"用户点了哪个动作"}
   ACTION -->|"设置/替换"| WRITE["写单个值"]
   ACTION -->|"移除"| UNSET["删单个 ref"]
   ACTION -->|"配置免密登录"| BSSELECT["填目标机并读指纹"]
   WRITE --> LIST
   UNSET --> LIST
+  TARGETS --> LIST
   BSSELECT --> BSCONFIRM{"你确认指纹了吗"}
   BSCONFIRM -->|"未确认"| BSWAIT(["停在确认步，不提交密码"])
-  BSCONFIRM -->|"已确认"| BSINSTALL["生成密钥并装公钥"]
-  BSINSTALL --> BSDONE(["私钥与 config 已就位"])
+  BSCONFIRM -->|"已确认"| BSINSTALL{"生成密钥并装公钥"}
+  BSINSTALL -->|"装到远端并落盘本机"| BSDONE(["私钥与 config 已就位"])
   BSINSTALL -->|"登录失败或远端拒绝"| BSFAIL(["报错并删除密码文件"])
+  BSDONE -->|"登记表需要重读"| TARGETS
   TOOL --> PROBE(["模型自查凭证就绪度"])
 ```
 
@@ -118,7 +121,7 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 ## TOOL
 
-宿主半注册模型工具 `credential_manage` 与三条 Package 私有 RPC（`catalog`／`save`／`remove`），两者共用同一个 `CredentialCatalog` 实例，因而两条路径对状态的判定、对写入的拒绝条件不可能分叉。
+宿主半注册模型工具 `credential_manage` 与一组 Package 私有 RPC——凭证侧 `catalog`／`save`／`remove`，SSH 侧 `targets`／`target-probe`／`target-register`／`target-rename`／`target-forget`——两者共用同一个 `CredentialCatalog` 实例，因而两条路径对状态的判定、对写入的拒绝条件不可能分叉。RPC 清单的权威源是 `src/shared/protocol.ts` 的 `OPERATIONS`：宿主注册的每个方法都必须在其中，否则 bundle 路由不分发它、按钮答 404（该守卫见 [tests/README.md](dsh-credentials/tests/README.md)）。
 
 工具定义同时满足**两套方向相反的 schema 方言**：`parameters` 用根级 `required` 数组且省略 `additionalProperties`（隐式参数根是开放的）；`output.schema` 用逐属性 `required: true` 且每个对象节点显式声明 `additionalProperties`。`output.render` 返回内容块数组，不返回裸字符串。
 
@@ -130,7 +133,7 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 **输出**
 
-- `TOOL_READY`：工具与三条 RPC 的注册结果；去向为 `PROBE`。
+- `TOOL_READY`：工具与每个 RPC 的注册结果；去向为 `PROBE`。
 
 **失败模式**
 
@@ -191,6 +194,8 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 `state` 的四种取值在此逐行呈现且互相可辨：`set`／`unset`／`no-store`／`error`。`no-store` 与 `error` 刻意分开：前者这台机器修不了，后者可能再读一次就好，合并二者会给出错误指引。
 
+**SSH 组没有成员行，只有标题。** 目录里已不存在「粘贴私钥」那一行：一条粘贴的密钥和一条装好的密钥是两回事穿同一个名字——粘贴产出的密钥本机不知道怎么用（没有 `Host` 段、没有 `IdentityFile`、远端 `authorized_keys` 里也没有），而且面板无从判断这台机器连不连得上。所以 SSH 只有一条配置路径，由 `BSSELECT` 那条分支承担；`ssh` 组仍声明着，使标题与 `TARGETS` 在它下面渲染。
+
 **输入**
 
 - `ROWS_INPUT`：可渲染的清单；来源为 `RENDER`。
@@ -198,6 +203,220 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 **输出**
 
 - `ROWS`：渲染出的行；去向为 `ACTION`。
+- `GRID_READY`：SSH 组的标题已就位，目标面板可以挂在它下面；去向为 `TARGETS`。
+
+## TARGETS
+
+在主图里它是子流程蓝图型节点：内部步骤须另起一张图方能讲清，故此处先绘其子流程图，再逐节点成章。
+
+页面打开后读一次登记表，把**本机所有能免密到达的机器**列成行，并让用户在行上做四件事：补登记、检测连接、改昵称、移除登记。这一步**不发起任何连接**——探活只在用户点按钮时发生。
+
+**登记表存在设置文档里**（namespace `dsh-credentials`），不在凭证 seam 里。两个事实决定了这一点：本部署的凭证 seam 是 `0.1.0-rc.7`，只暴露引用半（`describe`／`set`／`unset`）**没有枚举**，而目标列表最需要的恰恰是可枚举；而目标本来就不是机密——`~/.ssh/config` 早已把地址、账号、密钥路径明文写着。全程唯一真正的机密是密码，它不落任何存储。
+
+**输入**
+
+- `GRID_READY`：SSH 组标题已就位，目标面板可以挂在它下面；来源为 `GRID`。
+- `BSDONE_TOUCH`：一次引导刚成功、登记表需要重读的信号；来源为 `BSDONE`。
+- `USER_ACTION`：用户在某个目标行上的点击；来源为界面交互。
+
+**输出**
+
+- `TARGETS_READY`：登记表已读并渲染出的行，含登记状态、连接状态、昵称与密钥路径；去向为 `TLIST`。
+- `TARGETS_FAILURE`：登记表不可读，面板降级渲染；去向为 `TDEGRADE`。
+
+```mermaid
+flowchart TB
+  TLOAD(["读登记表"]) --> TJOIN["与 ~/.ssh/config 求并集"]
+  TJOIN --> TRENDER{"存储是否就位"}
+  TRENDER -->|"就位"| TLIST["逐行渲染并标注两个状态"]
+  TRENDER -->|"未挂载"| TDEGRADE(["降级：只列 config 中发现的机器，登记与改名禁用"])
+  TLIST --> TACT{"用户点了哪个动作"}
+  TACT -->|"登记"| TREGISTER["写入登记表"]
+  TACT -->|"检测连接"| TPROBE["跑一次真实 ssh"]
+  TACT -->|"改昵称"| TRENAME["改写昵称"]
+  TACT -->|"移除登记"| FTRGET["从登记表删除"]
+  TREGISTER --> TLOAD
+  TRENAME --> TLOAD
+  FTRGET --> TLOAD
+  TPROBE --> TLIST
+```
+
+### TLOAD
+
+读一次登记表与 `~/.ssh/config`，把两者交给 `TJOIN`。读取是每次现读、不缓存，使刚登记的目标下一次读就可见。
+
+本节点同时是子流程的**重读入口**：下列每个结果到达都表示登记表或连接状态已变，需要重读一遍。到达本身即信号，结果内容不参与后续判定。
+
+**输入**
+
+- `BSDONE_TOUCH`：一次引导刚成功、登记表需要重读的信号；来源为 `BSDONE`。无内容，仅作触发。
+- `REGISTER_RESULT`：一次登记的写入结果；来源为 `TREGISTER`。带成功与否及原因，仅用于判定是否重读。
+- `RENAME_RESULT`：一次改名的写入结果；来源为 `TRENAME`。带成功与否及原因，仅用于判定是否重读。
+- `FORGET_RESULT`：一次移除登记的删除结果；来源为 `FTRGET`。带成功与否及原因，仅用于判定是否重读。
+- `RETRY_READ`：用户重新打开页面触发的重读；来源为 `TDEGRADE`。无内容，仅作触发。
+- `USER_ACTION`：某个目标行上的点击；来源为界面交互。
+
+**输出**
+
+- `REGISTERED`：登记表里已登记的条目；去向为 `TJOIN`。
+- `CONFIG_TEXT`：`~/.ssh/config` 的原文，文件不存在时为空串；去向为 `TJOIN`。
+
+**失败模式**
+
+- 登记表不可读：返回 `undefined`，由 `TJOIN` 之后的分叉判为未挂载。
+
+### TJOIN
+
+把两份来源求并集并定出每行的来路。求并集的判据是**别名**：登记表里有的是 `registered`，只出现在 config 里的是 `config-only`。已登记的目标**不因 config 里没有而消失**——config 可能被手工改过，而静默忘掉用户登记过的机器，比显示一行他能自己删的陈旧条目更糟。同名时以登记表的连接事实为准。
+
+**输入**
+
+- `REGISTERED`：登记表条目；来源为 `TLOAD`。
+- `CONFIG_TEXT`：`~/.ssh/config` 原文；来源为 `TLOAD`。
+
+**输出**
+
+- `ROWS_INPUT`：合并后的行，每行带 `registered` 或 `config-only`；去向为 `TRENDER`。
+
+**失败模式**
+
+- config 读失败：按空文件处理，只列登记表里的条目，不报错。
+
+### TRENDER
+
+本节点是子流程的分叉点：按登记表是否就位决定这一页可用还是降级。就位走 `TLIST`，未挂载走 `TDEGRADE`。
+
+**输入**
+
+- `ROWS_INPUT`：合并后的行；来源为 `TJOIN`。
+
+**输出**
+
+- `ROWS_READY`：可渲染的行；去向为 `TLIST`。
+- `DEGRADED`：不可用提示；去向为 `TDEGRADE`。
+
+### TLIST
+
+逐行渲染，每行三个互相独立的事实：**登记状态**（`已登记`／`未登记`）、**连接状态**（`已连接`／`认证失败`／`连不上`／`未检测`）、**显示名称**（昵称，纯显示，不影响 ssh 怎么连）。已登记的行另显密钥路径。
+
+连接状态在本次进程内记忆、**不落盘**：它是某一刻网络的事实，不是机器的属性，昨天写的「已连接」今天读出来就是一句自信的谎话。所以进程重启后每个目标都回到 `未检测`。
+
+**输入**
+
+- `ROWS_READY`：可渲染的行；来源为 `TRENDER`。
+- `TARGETS_READY`：子流程入口交付的、已读并渲染出的行；来源为 `TARGETS`。与 `ROWS_READY` 同义，二者到达任一即触发行渲染。
+- `PROBE_RESULT`：一次探活的结果；来源为 `TPROBE`。到达即表示该行需要重绘，内容本身不参与判定。
+
+**输出**
+
+- `ROWS`：渲染出的行；去向为 `TACT`。
+
+### TDEGRADE
+
+登记表未挂载时的出口：只列出 `~/.ssh/config` 中发现的机器，登记、改名、移除三个动作禁用，并写明原因。本节点不是终止态——存储回来后重读即恢复可用；它是「这台机器写不了登记表」这一约束在流程上的落点。
+
+**输入**
+
+- `DEGRADED`：不可用提示；来源为 `TRENDER`。
+- `TARGETS_FAILURE`：登记表不可读、面板降级渲染的原因；来源为 `TARGETS`。
+
+**输出**
+
+- `RETRY_READ`：用户重新打开页面触发的重读；去向为 `TLOAD`。
+
+### TACT
+
+用户在某个目标行上选一个动作。可选的动作用两个事实决定：`config-only` 的行给「登记」；`registered` 的行给「改名」与「移除登记」；**每一行都给「检测连接」**，因为它对两种来路的机器同样有意义。
+
+**输入**
+
+- `ROWS`：已渲染的行；来源为 `TLIST`。
+- `USER_ACTION`：用户的点击；来源为界面交互。
+
+**输出**
+
+- `REGISTER_INTENT`：待登记的别名与昵称；去向为 `TREGISTER`。
+- `PROBE_INTENT`：待检测的别名；去向为 `TPROBE`。
+- `RENAME_INTENT`：待改名的别名与新昵称；去向为 `TRENAME`。
+- `FORGET_INTENT`：待移除的别名；去向为 `FTRGET`。
+
+### TREGISTER
+
+用户点「登记」。宿主按别名在 `~/.ssh/config` 里找该机器的地址事实（`HostName`／`Port`／`User`／`IdentityFile`），填入缺失的字段后写入登记表。这是**补登记**：config 里手工配过、或用别的工具配过的机器会被发现并列出来，点一下就纳管，此后就能检测连接、改名、移除登记。
+
+**不连接任何东西**——本节点只搬运已经知道的事实。别名取不到地址时拒绝并说明；已经登记的别名再次登记是覆盖，不是新增。
+
+**输入**
+
+- `REGISTER_INTENT`：待登记的别名与可选昵称；来源为 `TACT`。
+
+**输出**
+
+- `REGISTER_RESULT`：写入结果，含成功与否与原因；去向为 `TLOAD`。到达即表示需要重读。
+
+**失败模式**
+
+- config 与请求里都没有地址：拒绝且**不写**登记表——写一条 host 为空的条目会造出一行永远连不上、又永远说不清为什么的行。
+- 写失败（存储只读等）：把原因原样透传，不谎报成功——静默不落盘会让面板显示一条下一次读不到的登记。
+- 别名为空：拒绝。
+
+### TPROBE
+
+用户点「检测连接」。跑一次真实的 `ssh`（`-o BatchMode=yes`、`-o IdentitiesOnly=yes`、显式 `-i <密钥>`），把结果记进本进程并交回 `TLIST` 重绘。
+
+**只有用户点击才会走到这里。** 打开页面不会向任何机器发起连接：这批是生产主机，让「打开设置页」带上网络副作用是不可接受的。
+
+`BatchMode=yes` 是承重项：没有它 ssh 可能退回交互式提问，而一个能卡在密码提示上的探活不是探活，是一个挂住的请求；带它是为了让 ssh **失败而不是提问**，从而在超时内给出退出码。`IdentitiesOnly=yes` 配显式 `-i` 把这次尝试钉在这台机器登记的那把密钥上，使结论描述的是**那把**密钥，而不是 agent 恰好先递出的任何一把。机器没有记录密钥路径时省略这两个选项——空的 `-i` 是 ssh 的参数错误，而省略它让 ssh 用自己的默认配置，这才是「文件里没写」的诚实读法。
+
+结果按 ssh 自己报告的原因分类，因为「没通」不可操作：**认证失败**（目标机拒了这把密钥，要修的是密钥或重跑引导）与**连不上**（网络或开机问题）**分开报**，两者修法不同。二者同时出现时取**认证失败**——回答过并拒绝密钥的机器是可达的，把它报成不可达会让人去查网络。
+
+**输入**
+
+- `PROBE_INTENT`：待检测的别名；来源为 `TACT`。
+
+**输出**
+
+- `PROBE_RESULT`：连接状态与失败原因；去向为 `TLIST`。
+
+**失败模式**
+
+- 别名不在当前列表里：拒绝，且**不运行 ssh**——未知别名没有可描述的目标。
+- ssh 非零退出：按 stderr 分类，绝不因退出码非零而报 `connected`。
+- 机器不可达：报 `连不上` 并给出分类后的原因。
+
+### TRENAME
+
+用户点「改名」，填入显示名称后保存。只改 `nickname` 一个字段，连接事实（地址、端口、账号、密钥路径）原样不动。清空后回退到别名，使一行永不显示为空白。
+
+**输入**
+
+- `RENAME_INTENT`：待改名的别名与新昵称；来源为 `TACT`。
+
+**输出**
+
+- `RENAME_RESULT`：写入结果；去向为 `TLOAD`。
+
+**失败模式**
+
+- 目标尚未登记：拒绝并提示先登记——改名只作用于登记表里存在的条目。
+- 写失败：透传原因。
+
+### FTRGET
+
+用户点「移除登记」。只从登记表里删除该别名，**不动** `~/.ssh/config` 里的 `Host` 段——那段可能是用户手写的，删掉它就等于替用户改了他的 ssh 配置。移除后该机器若仍在 config 里，会以 `未登记` 重新出现。
+
+**输入**
+
+- `FORGET_INTENT`：待移除的别名；来源为 `TACT`。
+
+**输出**
+
+- `FORGET_RESULT`：删除结果；去向为 `TLOAD`。
+
+**失败模式**
+
+- 别名本就不在登记表里：no-op，且**不重写文档**。
+- 写失败：透传原因。
 
 ## ACTION
 
@@ -330,7 +549,9 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 ## BSDONE
 
-成功出口：私钥、公钥、`~/.ssh/config` 段均已就位，此后可用别名直接登录。本节点是终止态，不再回到主干。
+成功出口：私钥、公钥、`~/.ssh/config` 段均已就位，此后可用别名直接登录。**这一台机器并未就此自动出现在目标面板里**：面板的登记表是另一个存储（设置文档），引导只写 `~/.ssh` 与 config，所以刚装好的机器在面板上先是 `未登记`，点一次「登记」才纳管。引导成功后页面会重读一次登记表，使这次变化立刻可见，而不必手动刷新。
+
+本节点是终止态，不再回到主干；用户后续在 `TARGETS` 那边继续操作这台机器。
 
 **输入**
 
@@ -338,7 +559,7 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 **输出**
 
-无。
+- `BSDONE_TOUCH`：登记表需要重读的信号；去向为 `TARGETS`。
 
 ## BSFAIL
 
@@ -393,4 +614,8 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 **`BSDONE` 证到哪一步，说清楚**：安装**跑完**这一段已取到证据——公钥装到远端、私钥按 0600 落盘、`~/.ssh/config` 段写全、远端脚本经 stdin 真的执行（`tests/e2e/bootstrap-success.e2e.mjs`）；凭据也确实送到了真实 sshd（`install-path.e2e.mjs`）。**但「密码认证对真实服务器成功」没有取到**，因为这台机器上做不到：sshd 需要可读的 shadow 条目，而 `/etc/shadow` 是 `root:shadow` 0640、`/etc/pam.d` 与 `/etc/nsswitch.conf` 只读、无 `uidmap`、无 `sudo`、无容器运行时（逐条实测见 [测试说明](dsh-credentials/tests/README.md) 的「密码认证在这台机器上做不到」）。`bootstrap-success` 因此用 `PATH` 上的 `ssh` 替身顶掉「一台会接受密码的服务器」这一件，其余全是本仓库自己的代码。换一台有 root 或已装 `uidmap` 的机器即可补上，届时把替身换回真 `ssh`。
 
-**已由单测守住的部分**：目录结构不变量、状态映射、写前拒绝、无路径返回值、工具定义的两套 schema 方言形状、两半 RPC 词汇一致、dispose 解挂、两形态端口对 `stdin`/`env` 的传递、适配器入口不写死形态。跑法与判据见 [tests/README.md](dsh-credentials/tests/README.md)：`npm test`，全绿且退出码为 0。
+**`TARGETS` 证到哪一步，说清楚**：登记表的**读、合并、登记、改名、移除**已取到活体证据——在真实部署端口上，`targets` 返回了 `~/.ssh/config` 里发现的每台机器（`github.com`／`proxy`／`openwrt`，均为 `config-only`），`target-register` 带昵称写入后 `origin` 翻为 `registered` 且条目落在 `$DSH_HOME/settings.yaml` 的 `dsh-credentials` namespace 里，跨重启仍在。**探活也取到了真实证据**：对 `openwrt` 跑 `target-probe` 得 `unauthenticated`，同时独立跑同一条 `ssh` 得 `Permission denied (publickey,password)`，**分类与事实一致**；未知别名被拒且不运行 ssh。
+
+**已修但未活体验证的一处**：验证过程中发现——**`IdentityFile` 缺失的机器登记后会在下一次读时消失**，且 `forget` 因同一原因静默无效。根因是 `parseTarget` 拒了合法的空 `keyPath`，已修并补了对应回归用例（`tests/shared/targets.test.ts` 里的「an empty keyPath」两条），`dist/cordis/cred/host-body.js` 里确认含修复。但**它跑起来的样子尚未看到**：本机的 dsh 进程在改动期间无法由沙箱内重启（写 `data/profiles/web/cordis.yml` 得 `EROFS`），故运行中的进程仍是修复前的代码。重启后应复验：没有 `IdentityFile` 的机器能登记并留住。
+
+**已由单测守住的部分**：目录结构不变量、状态映射、写前拒绝、无路径返回值、工具定义的两套 schema 方言形状、两半 RPC 词汇一致、dispose 解挂、两形态端口对 `stdin`/`env` 的传递、适配器入口不写死形态；**新增部分**——目标契约的解析与往返、`~/.ssh/config` 的解析（含 `=` 分隔与大小写混排）、两来源求并集、探活参数与结果分类、登记表服务的全部决策路径、bundle 行 `inject` 的完整覆盖（含新增的 `settings`）、以及**「宿主注册的每个操作都可被 bundle 路由分发」**这道 404 类防复发守卫。跑法与判据见 [tests/README.md](dsh-credentials/tests/README.md)：`npm test`，判据为全绿且退出码 0。
