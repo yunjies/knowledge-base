@@ -1,12 +1,14 @@
 # Home Media Pilot 媒体控制面流程
 
-本文档描述 `home-media-pilot` 仓库克隆已实现的运行流程：Pilot 作为家庭媒体系统的可写控制面，从媒体库配置与只读扫描取得资源事实，经 Provider 路由产出元数据与字幕候选，并由独立审批门约束对外部系统的变更。文档覆盖这些流程的主干、各分支的触发条件与失败出口，以及每个环节的输入输出；不描述尚未接线的能力。
+本文档描述 `home-media-pilot` 仓库克隆已实现的运行流程：Pilot 作为家庭媒体系统的可写控制面，从媒体库配置与只读扫描取得资源事实，经 Provider 路由产出元数据与字幕候选，并由独立审批门约束对外部系统的变更；应用版本不在代码里留字面量，而在运行时从工程声明取回，并呈现在入口处。文档覆盖这些流程的主干、各分支的触发条件与失败出口，以及每个环节的输入输出；不描述尚未接线的能力。
 
 ## 主流程
 
 ```mermaid
 flowchart TD
     START(["运维人员进入 WebUI 或 CLI"]) --> CONFIG_LIBRARY["媒体库与 Provider 配置"]
+    START --> VERSION_REPORT[["应用版本取回与呈现"]]
+    VERSION_REPORT --> VERSION_DONE(["应用版本可呈现"])
     CONFIG_LIBRARY --> SCAN_LIBRARY["媒体库扫描与索引"]
     SCAN_LIBRARY --> LIST_RESOURCES["资源清单查询"]
     LIST_RESOURCES --> MATCH_METADATA["元数据匹配会话"]
@@ -128,9 +130,111 @@ flowchart TD
 
 运维人员通过 WebUI 或 CLI 进入系统。两者都不直接访问外部服务，全部业务执行落在应用服务边界上。
 
+入口同时分出两条去向：一条进入 `CONFIG_LIBRARY` 及其后的业务主干，一条进入 `VERSION_REPORT`——后者只服务于入口处对当前版本的呈现，不参与业务主干。
+
 - 输入参数：无
 - 输出参数：
-  - `entry_channel`：枚举；去向为流程之外（WebUI 或 CLI 请求方）
+  - `entry_channel`：枚举；去向为流程之外（WebUI 或 CLI 请求方），亦去向为 `VERSION_REPORT`
+
+## VERSION_REPORT
+
+把应用版本从工程声明里取回并送到呈现处。版本号在工程内只有一处权威：`pyproject.toml` 的 `project.version`；代码内不保存它的副本。
+
+取回在运行时发生：解析工程声明得出版号，与工程自身声明逐次对齐。取不到该声明时——工程根定位不到、文件不可读、内容非合法 TOML、或 `project.version` 缺失、非字符串、为空——取回结果退为一个占位值，取回失败不使任何路由转为错误响应。
+
+呈现侧在运行时取回后渲染在入口侧栏的底部；取回失败即不渲染，不报错、不提示、不影响页面上其余部分的加载。
+
+CLI 与呈现侧共用同一取回结果，不各自另存一份版号。
+
+```mermaid
+flowchart TD
+    START_VSN(["请求或呈现应用版本"]) --> READ_PYPROJECT{"工程声明可解析出<br/>project.version？"}
+    READ_PYPROJECT -- 否 --> FALLBACK_VERSION["取回结果退为占位值"]
+    READ_PYPROJECT -- 是 --> RESOLVE_VERSION["取回声明的版本"]
+    RESOLVE_VERSION --> SERVE_VERSION["按入口形态送出版本"]
+    FALLBACK_VERSION --> SERVE_VERSION
+    SERVE_VERSION --> RENDER_VERSION["呈现处渲染版本"]
+    RENDER_VERSION --> VERSION_SHOWN(["应用版本已呈现"])
+```
+
+实现取回处为 `src/apps/api/main.py` 的 `application_version()`，`/version` 路由见同文件的 `version()`；CLI 的取回见 `src/apps/cli/main.py`；前端渲染见 `src/frontend/src/main.tsx`，样式见 `src/frontend/src/style.css`。用例见 `tests/src/apps/api/test_application_version.py`、`tests/src/apps/api/test_health.py` 的 `test_version_endpoint_reports_application_version`、`tests/src/apps/cli/test_cli.py` 与 `tests/src/frontend/test_webui_contract.py`；跑法与判据取回自克隆内的 `tests/README.md`（命令为 `uv run pytest -q`，判据为全绿且退出码 0）。
+
+- 输入参数：
+  - `entry_channel`：枚举；来源为 `START`
+- 输出参数：
+  - `version_view`：含应用名与版本、或版本为占位值的呈现结果；去向为 `VERSION_DONE`
+
+### START_VSN
+
+版本流程入口。进入系统的任一入口形态（HTTP 请求、CLI 命令、WebUI 首屏）都会触发它。
+
+- 输入参数：
+  - `entry_channel`：枚举；来源为 `START`
+- 输出参数：
+  - `version_request`：版本取回请求；去向为 `READ_PYPROJECT`
+
+### READ_PYPROJECT
+
+向上遍历本文件的祖先目录定位工程根，解析其工程声明并取出 `project.version`。判据是定位到的根目录同时带 `pyproject.toml` 与 `src/`，且该文件可解析出非空字符串形式的 `project.version`。
+
+- 输入参数：
+  - `version_request`：版本取回请求；来源为 `START_VSN`
+- 输出参数：
+  - `declared_version`：工程声明中的版本；去向为 `RESOLVE_VERSION`
+  - `source_missing`：工程根定位不到、文件不可读、非合法 TOML，或 `project.version` 缺失、非字符串、为空；去向为 `FALLBACK_VERSION`
+
+### FALLBACK_VERSION
+
+把取回结果退为占位值。该占位值取自 `src/apps/api/main.py` 的 `_UNKNOWN_VERSION`。版本只服务呈现，取回失败不构成服务级错误。
+
+- 输入参数：
+  - `source_missing`：工程声明不可用的信号；来源为 `READ_PYPROJECT`
+- 输出参数：
+  - `fallback_version`：占位值；去向为 `SERVE_VERSION`
+
+### RESOLVE_VERSION
+
+以取回的版号作为本次应用版本。
+
+- 输入参数：
+  - `declared_version`：工程声明中的版本；来源为 `READ_PYPROJECT`
+- 输出参数：
+  - `application_version`：本次应用版本；去向为 `SERVE_VERSION`
+
+### SERVE_VERSION
+
+按入口形态送出版本：HTTP 入口回 `{name, version}`，CLI 入口把版本并入本地检查的输出。
+
+- 输入参数：
+  - `application_version`：本次应用版本；来源为 `RESOLVE_VERSION`
+  - `fallback_version`：占位值；来源为 `FALLBACK_VERSION`
+- 输出参数：
+  - `version_payload`：含应用名与版本的响应或输出；去向为 `RENDER_VERSION`
+
+### RENDER_VERSION
+
+呈现处取回版本后渲染在入口侧栏的底部。该取回独立于首屏其余后台取回，故其失败不触发可用性提示，也不阻塞首屏；失败即不渲染。
+
+- 输入参数：
+  - `version_payload`：含应用名与版本的响应；来源为 `SERVE_VERSION`
+- 输出参数：
+  - `version_view`：侧栏底部已渲染的版本；去向为 `VERSION_SHOWN`
+
+### VERSION_SHOWN
+
+版本流程的完成出口。版本已在呈现处可见，或因取回失败而未渲染。
+
+- 输入参数：
+  - `version_view`：侧栏底部已渲染的版本；来源为 `RENDER_VERSION`
+- 输出参数：无
+
+## VERSION_DONE
+
+版本分支在主流程图上的完成点。入口已呈现当前版本，或因取回失败而未呈现；二者都不改变业务主干，也不影响其余环节的可用性。
+
+- 输入参数：
+  - `version_view`：含应用名与版本、或版本为占位值的呈现结果；来源为 `VERSION_REPORT`
+- 输出参数：无
 
 ## CONFIG_LIBRARY
 
@@ -1723,3 +1827,11 @@ flowchart TD
   - `task_record`：任务记录；来源为 `RETRY_TASK`、`FAIL_TASK` 或 `SUCCEED_TASK`
   - `error_response`：错误响应；来源为 `SUPPORT_ERROR`
 - 输出参数：无
+
+## 未验证面
+
+以下环节**尚无证据**，读到这些部分时不要当作已验证：
+
+- **前端包声明里的版本未收敛**。`src/frontend/package.json` 的 `version` 字段是 npm 私有包字段，当前不参与版本取回与呈现；它与工程声明的 `project.version` 之间没有自动化关联，改动工程声明时须人工同步。取回路径为该文件的 `version` 字段。
+- **取回发生在进程启动时**。`APP_VERSION` 在模块级求值一次，此后请求只回送该值；工程声明改动后已在运行的进程仍报旧版本，须重启进程才能取回新值。
+- **呈现效果只有源码层证据**。左下方渲染、取回独立于首屏其余后台取回、源码内无版本字面量这三点由镜像套件的静态面用例守住（跑法与判据取回自克隆内的 `tests/README.md`）；真实浏览器里的绘制结果尚无活体证据。
