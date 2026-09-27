@@ -84,6 +84,17 @@ assets/projects/home-media-pilot/home-media-pilot/
 # 内另存一份副本；本知识库对它的权威描述是同级 feature-flow.md。
 assets/projects/dsh-credentials/dsh-credentials/
 
+# assets/projects/dsh-cronjob/dsh-cronjob 同理：DSH 定时任务插件的独立仓库，自带 .git，
+# 远端为 github.com/yunjies/dsh-cronjob（`git -C assets/projects/dsh-cronjob/dsh-cronjob remote -v`
+# 现取现验）。它属于被引用的外部产物，整目录排除；本知识库对它的权威描述是同级
+# feature-flow.md，与上面两个项目一致。
+assets/projects/dsh-cronjob/dsh-cronjob/
+
+# 注意：assets/projects/dsh-plugin-manager/dsh-plugin-manager **不在此列**——它没有 .git，
+# 不是独立克隆，而是本知识库自己收录的一棵源码树（`ls -a` 无 .git 现取现验）。整目录
+# 排除会让它的源码在任何版本库中都不存在；它自带的 .gitignore 已排除 node_modules/、
+# dist/、.npm-cache/ 这些可重建产物，故按本项目源码管理即可。
+
 # 同理，若出现其它独立克隆的仓库目录也一并排除
 assets/projects/*/*/.git/
 

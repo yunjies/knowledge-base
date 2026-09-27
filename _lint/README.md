@@ -79,7 +79,7 @@ flowchart TB
 
 ### DISC_PRUNE
 
-在**下降之前**剪枝，而不是枚举之后再过滤。一个虚拟环境或 `node_modules` 树被递归展开的成本是分钟级，而它们的名字在进入前就已可知。
+在**下降之前**剪枝，而不是枚举之后再过滤。一个虚拟环境或 `node_modules` 树被递归展开的成本是分钟级，而它们的名字在进入前就已可知。**项目克隆同样在此处下降前剪枝**（`_harness/paths.py` 的 `_walk` 在压栈前判 `is_inside_checkout`）：克隆内部的目录项在本机文件系统上占全树的大头，枚举后过滤意味着每次发现都要把它们全部 stat 一遍，而全套件对发现函数的调用次数即 `_lint` 内 `paths.` 发现调用的出现次数（`grep -c "paths\." _lint/test_*.py` 现取现得）；下降前剪枝把单次发现从分钟级降到亚秒级，产出文档集与过滤方式逐字相同（两边各为 `all_documents()` 的全部成员，逐路径比对一致）。
 
 **输入**
 
@@ -521,6 +521,7 @@ UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q
 | `test_flowdoc_params.py` | F07 参数栏齐备与边两侧落地 |
 | `test_flowdoc_blueprint.py` | F08 蓝图绘自身图、内层节点成章 |
 | `test_doc_placement.py` | `assets/notes/` 准入判据的「没有别处可放」一条：笔记不得描述某个项目克隆内部 |
+| `test_inbox_provenance.py` | `assets/inbox/` 前置数据块的键齐备与 `prompt` 留档 |
 | `test_suite_integrity.py` | 门禁花名册与守卫钩子 |
 
 ## 判断项：本目录**不**判定的部分

@@ -53,12 +53,15 @@ def is_inside_checkout(path: Path) -> bool:
 
 
 def _walk(root: Path):
-    """Yield every markdown document under `root`, pruning the heavy directories.
+    """Yield every markdown document under `root`, pruning before descending.
 
-    The pruning happens before descending, not after enumerating: a recursive
-    glob visits every entry of a virtual environment or a `node_modules` tree
-    before a filter can reject it, which costs minutes on a checkout that
-    carries both.
+    Two prunes happen before a directory is descended into: the heavy
+    directories (`SKIP_DIRS`), and an included project's checkout — the same
+    scope `is_inside_checkout` states, applied where it costs nothing. A
+    recursive glob or a filter-after-enumeration visits every entry of a
+    `node_modules` tree or a checkout before a filter can reject it; on a
+    filesystem where one stat runs ~1.4ms that is minutes per pass, and the
+    discovery functions run once per test that asks for them.
     """
     stack = [root]
     while stack:
@@ -70,6 +73,8 @@ def _walk(root: Path):
         for entry in entries:
             if entry.is_dir():
                 if entry.name in SKIP_DIRS:
+                    continue
+                if is_inside_checkout(entry):
                     continue
                 stack.append(entry)
             elif entry.suffix == ".md":

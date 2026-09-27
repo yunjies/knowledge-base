@@ -24,6 +24,8 @@ GATE_FLOOR = {
     "test_flowdoc_params.py": 3,
     "test_flowdoc_blueprint.py": 2,
     "test_doc_hygiene.py": 6,
+    "test_doc_placement.py": 2,
+    "test_inbox_provenance.py": 3,
     "test_suite_integrity.py": 4,
 }
 
