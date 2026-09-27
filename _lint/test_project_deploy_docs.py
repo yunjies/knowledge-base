@@ -58,7 +58,7 @@ from pathlib import Path
 
 from _harness import paths
 
-PROJECTS = ("dsh-credentials", "dsh-cronjob", "dsh-plugin-manager", "home-media-pilot")
+PROJECTS = ("dsh-credentials", "dsh-cronjob", "home-media-pilot")
 
 # The note the migration absorbed. Named literally rather than derived: the point
 # is that *this* note left `assets/notes/`, and a rule keyed on a pattern would
@@ -838,17 +838,28 @@ def test_every_named_entry_point_exists_in_its_checkout(repo) -> None:
     )
 
 
-def test_the_entry_point_rule_separates_a_real_path_from_a_generated_one() -> None:
+def test_the_entry_point_rule_separates_a_real_path_from_a_generated_one(tmp_path: Path) -> None:
     """The rule must flag a path the checkout lacks, and spare a generated one.
 
     Asserted over literal text so the property outlives the corpus, and in both
     directions because each alone is satisfied by a broken rule: a rule flagging
     everything would report every correct document, and a rule flagging nothing
     would let a document name a file that does not exist anywhere.
+
+    The checkout is a FIXTURE BUILT HERE, not a real project directory. Every
+    project checkout this suite inspects is git-ignored (each is an independent
+    clone or a source tree outside the knowledge base), so none of them exists
+    in a fresh clone — and a control that asserted one into existence would
+    pass on a developer's machine and fail in CI, which is the one place the
+    guard actually has to hold. Building the fixture makes the control depend
+    on nothing but this file, so it proves the rule in both environments.
     """
-    root = paths.repository_root()
-    checkout = root / "assets" / "projects" / "dsh-plugin-manager" / "dsh-plugin-manager"
-    assert checkout.is_dir(), "the fixture checkout is gone, so this control proves nothing"
+    checkout = tmp_path / "checkout"
+    (checkout / "tests").mkdir(parents=True)
+    (checkout / "dist" / "bundle").mkdir(parents=True)
+    (checkout / "tests" / "README.md").write_text("fixture\n", encoding="utf8")
+    (checkout / ".gitignore").write_text("dist/\n", encoding="utf8")
+    assert checkout.is_dir(), "the fixture checkout could not be built"
 
     # A path that is there, a path that is not, and a build output the project
     # deliberately does not track.
@@ -870,14 +881,9 @@ def test_the_entry_point_rule_separates_a_real_path_from_a_generated_one() -> No
     assert is_generated("dist/bundle/index.mjs", checkout), (
         "a build output the checkout gitignores must be spared: it is absent until someone builds"
     )
-
-    fake = {"examples/nonexistent-entry.yml": False}
-    for reference, expected in fake.items():
-        exists = (checkout / reference).exists()
-        assert exists is expected, (
-            f"the control assumed {reference} is absent from the checkout; if it now exists, pick "
-            "another name for the negative half"
-        )
+    assert not (checkout / "examples" / "nonexistent-entry.yml").exists(), (
+        "the negative half must name a path the fixture lacks"
+    )
 
 
 def test_the_credential_rule_fires_on_secrets_and_spares_placeholders(repo) -> None:

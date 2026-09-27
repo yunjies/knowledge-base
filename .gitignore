@@ -90,13 +90,20 @@ assets/projects/dsh-credentials/dsh-credentials/
 # feature-flow.md，与上面两个项目一致。
 assets/projects/dsh-cronjob/dsh-cronjob/
 
-# 注意：assets/projects/dsh-plugin-manager/dsh-plugin-manager **不在此列**——它没有 .git，
-# 不是独立克隆，而是本知识库自己收录的一棵源码树（`ls -a` 无 .git 现取现验）。整目录
-# 排除会让它的源码在任何版本库中都不存在；它自带的 .gitignore 已排除 node_modules/、
-# dist/、.npm-cache/ 这些可重建产物，故按本项目源码管理即可。
+# dsh-plugin-manager 已整体移出本知识库：它不是被收录的项目，其源码树也不属于
+# 本知识库。此前它按「本项目源码」管理（无 .git，非独立克隆），该裁决已推翻——
+# 判据是归属而非形态：这个项目不由本知识库承载，故目录、deploy.md 与 feature-flow.md
+# 一并不在库内。下方两行是防回归的排除规则：若该目录以任何形态再次出现，都不入库。
+assets/projects/dsh-plugin-manager/
 
 # 同理，若出现其它独立克隆的仓库目录也一并排除
 assets/projects/*/*/.git/
+
+# --- 共享目录的删除残留 -------------------------------------------------
+# 本工作区挂载在 9p（`mount | grep knowledge-base` 现取现验）。删除正被宿主侧
+# 持有句柄的文件时，9p 会留下零字节的 `.fuse_hidden*` 占位文件，且删除动作会
+# 反复重建它——这些不是内容，是挂载层的产物，故按本地产物排除。
+.fuse_hidden*
 
 # --- 大型媒体与本地环境产物 -------------------------------------------
 assets/**/media/
