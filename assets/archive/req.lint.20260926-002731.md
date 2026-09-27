@@ -9,6 +9,7 @@ prompt:
   - 更正 promote 其实是 prompt
   - 接下来构建开发流程图template
   - 有u一些固定流程需要确认一下，由于req文档是开发流程文档，需要规划每个阶段要做什么，边界是什么，是否启动subagent，以及开发阶段、测试阶段（失败则回滚到开发）、归档阶段（落档feature-flow）、验收阶段（比对文档diff和req是否匹配）。每个阶段采用独立的subagent
+  - req.lint归档
 ```
 
 
@@ -37,8 +38,8 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class START,SCOPE done
-  class DESIGN,IMPL,REGISTER,VERIFY,BASELINE,GREEN,DONE todo
-  class BLOCKED stuck
+  class DESIGN,IMPL,REGISTER,VERIFY,BASELINE,GREEN,DONE done
+  class BLOCKED done
 ```
 
 ## START
@@ -84,7 +85,7 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class D_START done
-  class D_NAMING,D_COLOR,D_NEGATIVE,D_OUT todo
+  class D_NAMING,D_COLOR,D_NEGATIVE,D_OUT done
 ```
 
 ### D_START
