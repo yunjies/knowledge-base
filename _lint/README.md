@@ -522,7 +522,7 @@ UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q
 | `test_flowdoc_blueprint.py` | F08 蓝图绘自身图、内层节点成章 |
 | `test_doc_placement.py` | `assets/notes/` 准入判据的「没有别处可放」一条：笔记不得描述某个项目克隆内部 |
 | `test_inbox_provenance.py` | `assets/inbox/` 前置数据块的键齐备与 `prompt` 留档 |
-| `test_inbox_contract.py` | 需求文件名的三段式、以及每张图内每个节点都带三档状态之一 |
+| `test_inbox_contract.py` | 需求文件名的四段式、以及每张图内每个节点都带三档状态之一 |
 | `test_project_deploy_docs.py` | 各项目的 `deploy.md` 在位且非空、笔记已迁移、命令入口在克隆内存在、不含凭据与内网地址、`.env` 样板的键名合法且与 Compose 的 `${}` 引用双向对应 |
 | `test_suite_integrity.py` | 门禁花名册与守卫钩子 |
 

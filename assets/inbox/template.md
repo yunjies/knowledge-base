@@ -20,15 +20,18 @@ flowchart TB
   TEST_GATE -->|"有失败用例"| DEVELOP
   ARCHIVE --> ACCEPT[["验收阶段"]]
   ACCEPT --> ACCEPT_GATE{"改动与需求逐条对应？"}
-  ACCEPT_GATE -->|"对应"| DONE(["需求完成，本文件归档"])
+  ACCEPT_GATE -->|"对应"| REQUESTER_APPROVAL{"需求方同意归档？"}
   ACCEPT_GATE -->|"漏改或有需求外改动"| DEVELOP
+  REQUESTER_APPROVAL -->|"同意"| DONE(["需求完成，本文件归档"])
+  REQUESTER_APPROVAL -->|"未同意或未回复"| APPROVAL_WAIT["等待需求方确认"]
+  APPROVAL_WAIT -->|"需求方确认后"| REQUESTER_APPROVAL
   DEVELOP -.->|"做不下去"| BLOCKED(["阻塞：等需求方确认"])
   BLOCKED -.->|"确认后"| DEVELOP
 
   classDef todo fill:#f9d71c,stroke:#8a6d00,color:#000
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
-  class DEVELOP,TEST,ARCHIVE,ACCEPT,TEST_GATE,ACCEPT_GATE,DONE todo
+  class DEVELOP,TEST,ARCHIVE,ACCEPT,TEST_GATE,ACCEPT_GATE,REQUESTER_APPROVAL,APPROVAL_WAIT,DONE todo
   class BLOCKED stuck
 ```
 
@@ -541,7 +544,7 @@ flowchart TB
 
 ### C_PASS
 
-通过出口：需求要求的都做了、且没有需求外的改动。本节点无出边。
+通过出口：需求要求的都做了、且没有需求外的改动。本节点把结果交给需求方，不自行触发归档。
 
 **输入**
 
@@ -549,11 +552,11 @@ flowchart TB
 
 **输出**
 
-- `ACCEPTED`：验收通过；去向为 `C_DONE`。
+- `ACCEPTED`：验收通过；去向为 `REQUESTER_APPROVAL`。
 
 ### C_DONE
 
-需求完成的收尾：本条需求达成。按 [本目录 README](README.md) 的边界声明，需求完成后本目录不留存档，故**本文件整篇移入 [assets/archive/](../archive/README.md)**——是移动不是复制；归档前把全部节点状态标为已执行，文件内容不再改写。本节点无出边。
+需求完成的收尾：只有需求方明确同意归档后，本条需求才算完成。此时按 [本目录 README](README.md) 的边界声明，把**本文件整篇移入 [assets/archive/](../archive/README.md)**——是移动不是复制；归档前把全部节点状态标为已执行，文件内容不再改写。本节点无出边。
 
 **输入**
 
@@ -573,20 +576,46 @@ flowchart TB
 
 **输出**
 
-- `ACCEPT_VERDICT`：逐条对应与否；去向为 `DEVELOP` 或 `DONE`。
+- `ACCEPT_VERDICT`：逐条对应与否；去向为 `DEVELOP` 或 `REQUESTER_APPROVAL`。
 
 ## DONE
 
-需求完成的终点标记：四个阶段都走完且验收通过，本文件移入 `assets/archive/`。本节点无出边。
+需求完成的终点标记：四个阶段都走完、验收通过，且需求方明确同意归档；本节点只在收到该同意后成立。本节点无出边。
 
 **输入**
 
-- `ACCEPTED`：验收通过；来源为 `C_PASS`。
+- `REQUESTER_DECISION`：需求方明确同意归档；来源为 `REQUESTER_APPROVAL`。
 - `ACCEPT_VERDICT`：逐条对应与否；来源为 `ACCEPT_GATE`。
 
 **输出**
 
 - `ARCHIVE_MOVE`：把本文件移入 `assets/archive/` 的动作；去向为流程外部的归档动作。
+
+## REQUESTER_APPROVAL
+
+验收通过后把结果提交给需求方，等待其明确回答是否同意把本需求归档。没有明确同意时，不得把「未回复」解释成同意，也不得自动移动文件。
+
+**输入**
+
+- `ACCEPTED`：验收通过；来源为 `C_PASS`。
+- `ACCEPT_VERDICT`：逐条对应与否；来源为 `ACCEPT_GATE`。
+- `REQUESTER_DECISION`：需求方确认后的决定；来源为 `APPROVAL_WAIT`。
+
+**输出**
+
+- `REQUESTER_DECISION`：需求方明确同意或拒绝归档；去向为 `DONE` 或 `APPROVAL_WAIT`。
+
+## APPROVAL_WAIT
+
+需求方未同意归档时的等待出口。本节点不改变代码或文档，也不把沉默当作同意；收到需求方明确意见后重新进入 `REQUESTER_APPROVAL`。
+
+**输入**
+
+- `REQUESTER_DECISION`：未同意或未回复；来源为 `REQUESTER_APPROVAL`。
+
+**输出**
+
+- `REQUESTER_DECISION`：等待中的决定；去向为 `REQUESTER_APPROVAL`。
 
 ## BLOCKED
 

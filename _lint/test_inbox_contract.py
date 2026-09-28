@@ -2,7 +2,7 @@
 
 `assets/inbox/README.md` states two things about a demand document that the
 document's own content cannot state. Its **filename** is the demand's identity:
-the three-segment form `req.<业务>.<时间>.md` is what makes the directory listing
+the four-segment form `req.<修改的项目>.<简述内容>.<时间戳>.md` identifies the project, content summary, and arrival time
 read as a queue ordered by arrival, and `<时间>` is the moment the demand
 arrived rather than the moment it advanced — which is why a demand is never
 renamed while it is being worked on. Its **node colours** are the demand's
@@ -15,9 +15,9 @@ which is the whole point of the colour.
 Two decisions here are worth stating, because both were live alternatives:
 
 The naming check accepts the dot form only, and that is the README's rule rather
-than a convenience. Every demand in the corpus but one already writes
-`req.<业务>.<时间>.md`; the single hyphenated file predates the README and is the
-outlier, so the gate catches it instead of the rule being widened to admit it. A
+than a convenience. The naming gate requires the project and summary to be separate dot-delimited slugs. A gate that
+accepted ambiguous or underspecified names would let the queue lose the project and content
+identity it is required to expose. A
 gate written to accept both spellings would have no power over either — the
 corpus could drift one file at a time and every run would stay green.
 
@@ -39,10 +39,12 @@ import re
 
 from _harness import mermaid, paths
 
-# A demand's identity, per the directory README: `req.` + business segment +
-# arrival stamp + extension. The business segment is a lowercase short name; the
-# stamp is the arrival moment to the second in `YYYYMMDD-HHMMSS`.
-DEMAND_NAME = re.compile(r"^req\.[a-z0-9]+\.[0-9]{8}-[0-9]{6}\.md$")
+# A demand's identity, per the directory README: `req.` + project slug + summary slug +
+# arrival stamp + extension. Slugs are lowercase ASCII words joined by hyphens; the stamp is
+# the arrival moment to the second in `YYYYMMDD-HHMMSS`.
+DEMAND_NAME = re.compile(
+    r"^req\.[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+(?:-[a-z0-9]+)*\.[0-9]{8}-[0-9]{6}\.md$"
+)
 
 # Both directories hold demands under the same contract. The archive is included
 # on purpose: an archived demand keeps its name and colours.
@@ -86,9 +88,9 @@ def demand_documents() -> list:
 
 
 def misnamed(documents: list) -> list[str]:
-    """Demand documents whose filename does not match `req.<业务>.<时间>.md`."""
+    """Demand documents whose filename does not match `req.<修改的项目>.<简述内容>.<时间戳>.md`."""
     return [
-        f"{paths.relative(path)}: `{path.name}` is not `req.<业务>.<时间>.md`"
+        f"{paths.relative(path)}: `{path.name}` is not `req.<修改的项目>.<简述内容>.<时间戳>.md`"
         for path in documents
         if not DEMAND_NAME.match(path.name)
     ]
@@ -159,16 +161,16 @@ def unstamped_graphs(text: str) -> list[str]:
 
 
 def test_every_demand_filename_matches_the_naming_rule(repo) -> None:
-    """A demand's filename must be its identity in the README's three-segment form.
+    """A demand's filename must identify the modified project, content summary, and arrival time in the README's four-segment form.
 
-    The name is how a demand is referenced and how the directory sorts by
-    arrival; a file outside the form is not addressable as a demand and breaks
-    the reading of the directory as a queue. The stamp's *truth* is not judged —
+    The name is how a demand is referenced and exposes its project, summary, and arrival stamp;
+    a file outside the form is not addressable as a demand and breaks the reading of the
+    directory as a queue. The stamp's *truth* is not judged —
     nothing in the file can date its own arrival — only its shape.
     """
     offenders = misnamed(demand_documents())
     assert offenders == [], (
-        "a demand file must be named `req.<业务>.<时间>.md` with a `YYYYMMDD-HHMMSS` arrival "
+        "a demand file must be named `req.<修改的项目>.<简述内容>.<时间戳>.md` with a `YYYYMMDD-HHMMSS` arrival "
         f"stamp, so the directory reads as a queue ordered by arrival: {offenders}"
     )
 
@@ -201,19 +203,22 @@ def test_the_naming_rule_tells_a_demand_from_a_lookalike() -> None:
     filename at all, and the rejection half is what stops that.
     """
     accepted = [
-        "req.lint.20260926-002731.md",
-        "req.hmp.20260927-062907.md",
-        "req.credential.20260927-041050.md",
+        "req.knowledge-base.inbox-contract.20260926-002731.md",
+        "req.home-media-pilot.browser-screenshot.20260927-062907.md",
+        "req.dsh-credentials.rotate-key.20260927-041050.md",
     ]
     for name in accepted:
         assert DEMAND_NAME.match(name), f"{name} is the README's form and must be accepted"
     rejected = {
-        "req.lint-20260926-002731.md": "the business segment and stamp are joined by a dot",
-        "req.lint.20260926.md": "the stamp carries both date and time",
-        "req.lint.20260926-0027.md": "the stamp reaches seconds",
-        "req.Lint.20260926-002731.md": "the business segment is lowercase",
-        "req.lint.20260926-002731.markdown": "a demand is markdown",
-        "note.lint.20260926-002731.md": "a demand is prefixed `req`",
+        "req.lint.20260926-002731.md": "the summary segment is missing",
+        "req.lint..inbox.20260926-002731.md": "the project segment is empty",
+        "req.Lint.inbox.20260926-002731.md": "the project segment is lowercase",
+        "req.lint.Inbox.20260926-002731.md": "the summary segment is lowercase",
+        "req.lint.inbox.20260926.md": "the stamp carries both date and time",
+        "req.lint.inbox.20260926-0027.md": "the stamp reaches seconds",
+        "req.lint.inbox.20260926-002731.markdown": "a demand is markdown",
+        "note.lint.inbox.20260926-002731.md": "a demand is prefixed `req`",
+        "req.lint.inbox.extra.20260926-002731.md": "a demand has exactly four segments",
     }
     for name, reason in rejected.items():
         assert not DEMAND_NAME.match(name), f"{name!r} must be rejected: {reason}"
