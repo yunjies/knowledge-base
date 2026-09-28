@@ -44,7 +44,7 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class START,PROBE done
-  class DEVELOP,TEST,TEST_GATE,ARCHIVE,ACCEPT,ACCEPT_GATE,REQUESTER_APPROVAL,APPROVAL_WAIT,DONE todo
+  class DEVELOP,TEST,TEST_GATE,ARCHIVE,ACCEPT,ACCEPT_GATE,REQUESTER_APPROVAL,APPROVAL_WAIT,DONE done
   class BLOCKED stuck
 ```
 
@@ -133,8 +133,8 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class D_IN done
-  class D_AGENT,D_CAPTURE,D_REDACT,D_SCOPE,D_REPORT,D_OUT todo
-  class D_STOP stuck
+  class D_AGENT,D_CAPTURE,D_REDACT,D_SCOPE,D_REPORT,D_OUT done
+  class D_STOP done
 ```
 
 ### D_IN
@@ -282,8 +282,8 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class T_IN done
-  class T_AGENT,T_RUN,T_VERDICT,T_PASS,T_OUT todo
-  class T_FAIL,T_BACK stuck
+  class T_AGENT,T_RUN,T_VERDICT,T_PASS,T_OUT done
+  class T_FAIL,T_BACK done
 ```
 
 ### T_IN
@@ -429,7 +429,7 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class A_IN done
-  class A_LOCATE,A_AGENT,A_ELSE,A_CHECK,A_OUT todo
+  class A_LOCATE,A_AGENT,A_ELSE,A_CHECK,A_OUT done
 ```
 
 ### A_IN
@@ -540,8 +540,8 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class C_IN done
-  class C_AGENT,C_COVER,C_EXTRA,C_PASS,C_DONE todo
-  class C_BACK,C_OUT stuck
+  class C_AGENT,C_COVER,C_EXTRA,C_PASS,C_DONE done
+  class C_BACK,C_OUT done
 ```
 
 ### C_IN
