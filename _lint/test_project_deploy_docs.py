@@ -58,7 +58,7 @@ from pathlib import Path
 
 from _harness import paths
 
-PROJECTS = ("dsh-credentials", "dsh-cronjob", "home-media-pilot")
+PROJECTS = ("dsh-credentials", "home-media-pilot")
 
 # The note the migration absorbed. Named literally rather than derived: the point
 # is that *this* note left `assets/notes/`, and a rule keyed on a pattern would
@@ -856,7 +856,7 @@ def test_the_entry_point_rule_separates_a_real_path_from_a_generated_one(tmp_pat
     assert backticked_paths("写入 `~/.ssh`；落在 `/app/data`；见 `profiles/`、`bundle/`") == [], (
         "host paths, in-container paths and bare directory names are not checkout citations"
     )
-    assert backticked_paths("工程根即 `assets/projects/dsh-cronjob/dsh-cronjob/`") == [], (
+    assert backticked_paths("工程根即 `assets/projects/example/example/`") == [], (
         "the span naming the checkout root itself must not be joined to that root"
     )
     assert not is_generated("tests/README.md", checkout), (
