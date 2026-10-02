@@ -1,6 +1,6 @@
 ---
 name: doc-writing
-description: 撰写、修订或审阅文档正文的行文表述时使用，不限文档的领域与体裁。把正文表述约束转成落笔次序上的可执行工序，并指向权威源的原文与判定口径。不负责规则卡片与规范册的字段结构、流程类文档的图与节点结构。
+description: 撰写、修订或审阅文档正文的行文表述时使用，不限文档的领域与体裁。把正文表述约束转成落笔次序上的可执行工序，并指向权威源的原文与判定口径。不负责规则卡片的字段结构、规范册的册层构成、流程类文档的图与节点结构。
 whenToUse: 撰写、修订或审阅文档正文的行文表述时，不限文档的领域与体裁。
 ---
 
@@ -10,9 +10,24 @@ whenToUse: 撰写、修订或审阅文档正文的行文表述时，不限文档
 
 ## 判据源与范围
 
-本 skill 的按条判据以[文档撰写规范](reference/doc-writing-constraints.md)（下称规范册）为唯一判据源，本 skill 不复制其条款。工序只编排落笔次序，不新增判据；规范册未覆盖的情形不得自行发明判据，须显式报出该情形与其归属。本 skill 工序中的 `D-nn` 即规范册的条目编号。
+本 skill 的按条判据以[文档撰写规范](reference/doc-writing-constraints.md)（下称**本册**）为唯一判据源，本 skill 不复制其条款。工序只编排落笔次序，不新增判据；本册未覆盖的情形不得自行发明判据，须显式报出该情形与其归属。本 skill 工序中的 `D-nn` 即本册的条目编号。**"本册"专指 `doc-writing-constraints.md`**，与"规范册"（以规则卡片承载约束、归 spec-book-writing 管辖的文档）不是同一个对象。
 
-本 skill 管文档正文的行文表述，不论文档的领域与体裁；某一步是否适用于当前文档，取该步所引条目自身写出的适用条件。规则卡片与规范册的字段结构、流程类文档的图与节点结构不归本 skill，取[规则卡片与规范册撰写工序](../rule-card-writing/SKILL.md)与[流程类文档撰写工序](../process-doc-writing/SKILL.md)。
+本 skill 管文档正文的行文表述，不论文档的领域与体裁；某一步是否适用于当前文档，取该步所引条目自身写出的适用条件。单条规则卡片的字段结构、**规范册**（承载规则卡片的那类文档）的册层构成、流程类文档的图与节点结构不归本 skill，取[规则卡片撰写工序](../rule-card-writing/SKILL.md)、[规范册撰写工序](../spec-book-writing/SKILL.md)与[流程类文档撰写工序](../process-doc-writing/SKILL.md)。
+
+## 路由表
+
+判据源位于 `reference/doc-writing-constraints.md`，每条以 `## D-nn 标题` 起首——**条目总数以该文件的标题行为准**，不在此处转述。**按编号直达该条标题的锚点**（把标题按 GitHub 规则转 slug），常用入口：
+
+| 你要做的事 | 读哪几条 |
+|---|---|
+| 判定某处事实该不该写 | [D-02](reference/doc-writing-constraints.md#d-02-正文不转述可自行取回的事实)（自行取回）、[D-03](reference/doc-writing-constraints.md#d-03-正文不引用外部记录的条目)（外部记录条目） |
+| 校验操作事实（命令/配置/默认值） | [D-19](reference/doc-writing-constraints.md#d-19-操作性断言须以运行为证据) |
+| 定该事实的承载层级 | [D-20](reference/doc-writing-constraints.md#d-20-正文陈述须落在其应有的层级) |
+| 造句（拆分、术语、链接、物理行、Markdown 语法） | [D-16](reference/doc-writing-constraints.md#d-16-一句只承载一条指令或一组紧密条件)、[D-17](reference/doc-writing-constraints.md#d-17-同一概念在全文只用一个术语)、[D-01](reference/doc-writing-constraints.md#d-01-指路性引用必须可跳转)、[D-21](reference/doc-writing-constraints.md#d-21-正文段落保持一个物理行)、[D-25](reference/doc-writing-constraints.md#d-25-正文以-markdown-语法撰写) |
+| 按体裁补必备项 | [D-14](reference/doc-writing-constraints.md#d-14-指令类文档须写明行为护栏与范围限制)（指令类）、[D-22](reference/doc-writing-constraints.md#d-22-决策记录须承载反论代价与可观察验收面)（决策记录）、[D-23](reference/doc-writing-constraints.md#d-23-面向使用者的说明须承载消费方约定)、[D-24](reference/doc-writing-constraints.md#d-24-操作手册须含前置条件与可观察验证) |
+| 删改前核对 | [D-09](reference/doc-writing-constraints.md#d-09-修订正文不得改变命题)、[D-10](reference/doc-writing-constraints.md#d-10-正文写到保住承重约定为止)、[D-11](reference/doc-writing-constraints.md#d-11-精简正文不得以篇幅为判据) |
+
+**规则卡片字段行内的写法不取本册的列表要求**：那里的并列项按其载体规则（子标签行／编号行）承载，见卡片层 [§0.4](../rule-card-writing/reference/rule-card-writing-constraints.md#04-撰写通则) 的「分隔」通则与 [D-16](reference/doc-writing-constraints.md#d-16-一句只承载一条指令或一组紧密条件)。
 
 ## 工序
 
@@ -42,4 +57,4 @@ whenToUse: 撰写、修订或审阅文档正文的行文表述时，不限文档
 
 ## 自检
 
-落笔完成后，按规范册逐条核对：每条自身的判定口径与语义判据即该条的核对方式，不在此处另立清单。
+落笔完成后，按**本册**（`reference/doc-writing-constraints.md`）逐条核对：每条自身的判定口径与语义判据即该条的核对方式，不在此处另立清单——**本清单不含判据摘要**，覆盖不了任何条目。

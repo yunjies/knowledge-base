@@ -1,6 +1,6 @@
 # dsh-credentials 部署与使用
 
-本文档给出把 `dsh-credentials` 装进一个 DSH 部署、并把它用起来的两条路径：**cordis 形态**（动态包，随会话存在）与**bundle 形态**（装进 profile，随部署常驻）。两条路径产出的能力相同，择一即可，也可以都走——形态差异由构建期吸收，业务代码只有一份。文档另给出跑它的测试、判读它的失败、以及判断这份做法何时不成立所需的事实。
+本文档给出把 `dsh-credentials` 装进一个 DSH 部署、并把它用起来的两条路径：**动态 Cordis 形态**（随 Session 加载）与**bundle 形态**（装进 profile，随部署常驻）。两条路径产出的能力相同；同一 profile/session 只启用其中一种形态，除非另有经验证的隔离或互斥实现。形态差异由构建期吸收，业务代码只有一份。文档另给出跑它的测试、判读它的失败、以及判断这份做法何时不成立所需的事实。
 
 工程根在下文一律记作 `<工程>`，即 `assets/projects/dsh-credentials/dsh-credentials/`（自带 `.git` 与远端）。命令都在该目录下执行。
 
@@ -8,34 +8,34 @@
 
 - 一份可用的 DSH 部署，且 `DSH_HOME` 下有默认 profile。
 - Node 与 npm 可用（构建与单测都要）。
-- 构建期工具链 `plugin-loader` 位于本知识库工程内（工程内 `package.json` 的 build script 按相对路径调用它，它不是本工程的依赖项，也不随包分发）。
+- 使用 Dynamic Cordis 时，目标 profile 必须已有并启用 `@local/dsh-dynamic-cordis-loader`，否则 WebUI 不会显示 Dynamic Cordis 面板。若该插件属于启动期插件且安装结果要求 restart，先重启目标 profile，再使用面板。
+- `plugin-loader` 是构建期工具链，不是本工程的依赖项，也不随包分发。调用者须把 `DSH_PLUGIN_LOADER` 指向自己的 plugin-loader checkout；例如 `/path/to/plugin-loader`。`build:dynamic-cordis` 也需要设置该变量。
 - 凭证存**默认落在** `$DSH_HOME/.credentials.yaml`（`dsh-credentials-local` provider）。本插件不重造存储，只提供它缺的那层目录与界面。
 
 本能力**不提供权限隔离**：存储文件与 agent 的工具进程同属一个 OS 用户，agent 读得到它。它降低的是重复配置成本与泄露面，不是隔离边界。
 
-## 路径一：cordis 形态（动态包）
+## 路径一：Dynamic Cordis（当前动态加载入口）
 
-适用：让某个会话临时具备凭证管理能力，不写 profile、不落盘常驻。
+适用：在当前 WebUI 的 `Dynamic Cordis` 面板中，为选定 Session 临时注册并加载插件定义。此流程不使用 `cordis_define` 或 `cordis_run`。
 
-1. 构建 cordis 产物：
+1. 在工程根执行构建：
 
    ```bash
-   npm run build:cordis
+   DSH_PLUGIN_LOADER=/path/to/plugin-loader npm run build:dynamic-cordis
    ```
 
-   产物为 `dist/cordis/cred/{host-body.js,client-body.js}`（形态与产物目录的声明见 `loader-configs/build.json` 与 `loader-configs/loader.json`）。判据是**退出码 0 且两份产物非空**。
+   命令须退出码为 0，且下列产物非空：`dist/dynamic-cordis/dsh-credentials/host.js` 与 `client.js`。
 
-2. 用 `cordis_define` 把两份 body 定义为一个动态插件：`code.host` 取 `dist/cordis/cred/host-body.js` 的内容，`code.client` 取 `dist/cordis/cred/client-body.js` 的内容。
+2. 打开 WebUI 的 `Dynamic Cordis` 面板，先选择目标 Session。
+3. 在输入框中填入 `dist/dynamic-cordis/dsh-credentials/` 的 Host 可读绝对目录路径，然后选择 **Search files**。
+4. 在候选结果中选取精确文件名为 `host.js` 的定义；同目录的 `client.js` 可选。选择 **Register** 注册定义。
+5. 对已注册定义显式选择 **Load**；更新已有定义时显式选择 **Load update**。仅 Register 不会加载插件。
 
-3. 用 `cordis_run` 激活该 package。
+动态 definitions 在 DSH 进程重启后清空，需重新注册与加载。动态加载使用 VM，但 VM **不是安全边界**；不要加载不可信代码。成功注册或调用加载动作不能替代真实页面与业务行为验证。
 
-4. 激活后：宿主侧注册模型工具 `credential_manage` 与一组 Package 私有 RPC，浏览器侧在设置面板注册一个「凭证」页。**开发期即时验证**正是这条路径的长处——改代码后重跑构建并定义一个新 package 即可，不必重启 DSH。
+### 旧 cordis body 构建路径
 
-cordis body 内**不得有静态 `import`**（它以 `new Function` 形态求值，不接受 import）。判据可现取：
-
-```bash
-grep -cE "^\s*import[\s(]" dist/cordis/cred/*.js   # 期望为 0
-```
+`npm run build:cordis` 仍生成 `dist/cordis/cred/host-body.js` 与 `client-body.js`。这两份旧 body 不是 Dynamic Cordis 面板的候选 aliases；当前面板流程使用 `npm run build:dynamic-cordis` 生成的同目录 `host.js` 与 `client.js`。保留旧构建命令供仍消费 body 格式的流程使用，不要把 body 文件内容当作 `host.js`/`client.js` 候选注册。
 
 ## 路径二：bundle 形态（装进 profile 常驻）
 
@@ -65,8 +65,7 @@ grep -cE "^\s*import[\s(]" dist/cordis/cred/*.js   # 期望为 0
 
 ## 使用
 
-两条路径装好后，使用方式完全相同。
-
+同一 profile/session 只启用一种形态是操作员的部署约束，不是运行时互斥保证：两形态共用 `settings.section` 的 `credentials` section 与工具 `credential_manage`，当前没有实现或验证 dynamic-vs-bundle 的代码级互斥或命名空间隔离。bundle 同名 entry guard 只检查 bundle entry，不覆盖 session 级 Dynamic Cordis load；双方共存可能造成重复注册与冲突。未经目标运行时组合验证，不要同时启用。
 **界面**：设置面板里出现「凭证」页。页面按领域分组列出目录里的每一项，每行给名称、ref、状态徽章与用途，已配置时另显来源。状态四值互相可辨——`set`／`unset`／`no-store`／`error`；`no-store` 表示这台机器写不了（存储缺席），`error` 表示该项这次没读到、可能再读一次就好，二者的处置不同，不合并。存储未挂载时整页降级为一句不可用说明，不渲染行、不给按钮。
 
 **写入与移除**：点「设置」或「替换」展开输入行，点「移除」删除该 ref。`writable` 为假（只读来源遮蔽该 ref）或状态为 `no-store` 时两个按钮**禁用而非隐藏**，使「为什么不能改」在界面上可见。最常见的失败原话是「只读来源遮蔽了该 ref」——即启动环境里已有同名变量，此时存了也不生效，原样读它比任何改写都准确。
@@ -99,14 +98,15 @@ grep -cE "^\s*import[\s(]" dist/cordis/cred/*.js   # 期望为 0
 ## 测试与验证
 
 ```bash
-npm test              # 单测：内存打包的模块
-npm run build:bundle  # 两形态都要能转换
-npm run build:cordis
+DSH_PLUGIN_LOADER=/path/to/plugin-loader npm test  # 完整 transform 用例
+npm run build:bundle
+npm run build:cordis          # 旧 cordis body 输出路径
+DSH_PLUGIN_LOADER=/path/to/plugin-loader npm run build:dynamic-cordis  # 当前 Dynamic Cordis aliases
 npm run test:e2e:setup   # 幂等；建专用 profile e2e-credentials（端口 3099），不动你的 web profile
 npm run test:e2e
 ```
 
-判据：`npm test` 全绿且退出码 0；两条构建命令各自退出 0 且产物非空；E2E 的**每一个探针都退出 0**（不是与某个写死的条数相等）。测试分层、镜像规则、各文件的对象与反证纪律取回自 `tests/README.md`。
+判据：带 `DSH_PLUGIN_LOADER` 的 `npm test` 全绿且退出码 0；三条构建命令各自退出 0 且产物非空；E2E 的**每一个探针都退出 0**。测试分层、镜像规则、各文件的对象与反证纪律取回自 [tests/README.md](dsh-credentials/tests/README.md)。
 
 E2E 用专用 profile 与临时凭证库，开发者的运行中 harness 与 `.credentials.yaml` 都不被触碰。**不能用全新 `DSH_HOME`**——那会得到一个空的默认 profile，行根本不会挂载，探针会因与代码无关的原因 404。
 
@@ -123,12 +123,13 @@ E2E 用专用 profile 与临时凭证库，开发者的运行中 harness 与 `.c
 
 ## 未验证面
 
-以下环节**尚无证据**，读到这些部分时不要当作已验证。
+构建成功和静态测试通过都不能证明真实 profile 已加载插件或浏览器页面可见。以下动态加载与活体行为尚未验证：
 
-- **密码认证从未对真实服务器成功过。** `bootstrap-success.e2e.mjs` 用 `PATH` 上的 `ssh` 替身顶掉「一台会接受密码的服务器」这一件，把「安装跑完并产出可用本机配置」证到；替身顶掉的正是认证那一段。这台机器上做不到的原因（无 root、无 `uidmap`、`/etc/pam.d` 与 `/etc/nsswitch.conf` 只读）逐条列在 `tests/README.md`。换一台有 root 或已装 `uidmap` 的机器即可补上，届时把替身换回真 `ssh`。
-- **真实浏览器渲染**只断言到「section 出现且面板渲染出行与摘要」，像素级布局与样式没有断言，也没有截图基线。既有断言写于 SSH 私钥行还在时，SSH 组现无成员，该行断言待调整。
-- **`tests/live-mount-probe.mjs` 当前基线即红**：报 `registered no tool`，对干净的 git 树同样失败，属装配面 loader 环境的既有问题，与任何进行中的源码改动无关；在该探针恢复之前，bundle 形态的装配级证据不可复算。
-- **`bundle.patch.yml` 的挂载只有专用 profile 下的活体证据**（`e2e-credentials`）；本仓库的 profile 里从未挂过它。
+- 尚未在真实 profile 的 WebUI `Dynamic Cordis` 面板中完成 Register、Load 或 Load update。
+- 尚未验证真实页面是否出现「凭证」，也未执行真实浏览器活体验证。
+- 动态 Cordis UI 不会启用 credential storage provider；缺少 credentials seam 时 catalog 返回 `storeAvailable=false`。
+
+验证这些事项时，执行者需在允许访问目标 profile 与浏览器的环境中按本文件「路径一」操作，并单独记录实际可观察结果；不得以 Node VM evaluator 测试代替。
 
 ## 适用范围
 
