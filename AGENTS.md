@@ -2,7 +2,11 @@
 
 ## 知识库装载
 
-本工程的知识库文档不是全部默认装载，装载由场景触发：任务执行时按需装载（如 [agent-constraints.md](_meta/agent-constraints.md)——agent 执行规范）。新增知识库文档时，在其对应生产场景的指令处补指路，否则该文档对未被告知的会话不存在。
+本工程的知识库文档不是全部默认装载，装载由场景触发：任务执行时按需装载（如 [agent-constraints.md](_meta/agent-constraints.md)——agent 执行规范；环境部署与验收任务读[deploy.md](_meta/deploy.md)）。新增知识库文档时，在其对应生产场景的指令处补指路，否则该文档对未被告知的会话不存在。
+
+多视角独立审核并维护跨轮事实记录时，读[审核事实记录的循环流程](_meta/notes/audit-record-loop-flow.md)。
+
+审阅技能文档的 LLM 第一读者可读性时，可参考[审核报告样本](_meta/notes/doc-writing-standards/samples/llm-readability-audit-sample.md)；该样本的测试结果与未修复项不代表 knowledge-base 当前状态。
 
 ## 可达执行路径验证
 
@@ -127,7 +131,7 @@
 
 分层判据、各层准入条件、镜像规则、套件可信性守卫与反证纪律，见[为项目建立测试套件的流程](_meta/notes/doc-writing-standards/samples/source-to-tests-flow.md)。**分层不按被测对象的技术栈**：判据是"这条证据是否只有真实环境才提供"。按需装载的子项——改动落在静态面、需要真实进程或浏览器、需要外部服务或容器运行时时，分别读[静态面](_meta/notes/doc-writing-standards/samples/tests-static-layer.md)、[活体面](_meta/notes/doc-writing-standards/samples/tests-live-layer.md)、[外部面](_meta/notes/doc-writing-standards/samples/tests-external-layer.md)的判据。
 
-被收录项目的测试套件**只维护一套**，且不在本知识库内：它随项目源码存放于项目自己的仓库克隆内（`assets/projects/<项目>/<repository>/tests/`），目录规范按镜像规则——该仓库 `src/` 下每一类代码、配置与产物在测试树中有一处对应节点。跑法与判据取回自该项目的 `tests/README.md`；命令是项目自身入口（`uv run pytest -q`，判据为全绿且退出码 0）。新增项目测试写在项目内，不落回知识库。
+被收录项目的测试套件**只维护一套**，且不在本知识库内：它随项目源码存放于项目自己的仓库克隆内（`assets/projects/<项目>/<repository>/tests/`），目录规范按镜像规则——该仓库 `src/` 下每一类代码、配置与产物在测试树中有一处对应节点。跑法与判据取回自该项目的 `tests/README.md`，命令按项目自身技术栈与已声明入口执行，判据为全绿且退出码 0。新增项目测试写在项目内，不落回知识库。
 
 **本知识库不持有非知识库信息的可执行测试**——判据是被守护对象属于谁，不是文件叫什么名字。守护本知识库自身信息的可执行测试归 `_lint/`（见[「本知识库的文档守护」](#本知识库的文档守护)）；一旦某条断言的对象是某个项目的实现（源码、配置、构建产物），它属该项目，写在项目内。把项目的测试搬进本知识库，或把本知识库的文档判据交给项目去执行，都是同一处错误的两个方向。
 
