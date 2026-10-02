@@ -1,16 +1,40 @@
 ---
 name: process-doc-writing
-description: 撰写、修订或审阅流程类文档（正文由流程图及其配套节点章节承载的文档）时使用。把图与节点结构约束转成落笔次序上的可执行工序，并指向权威源的原文与判定口径。不负责正文行文表述、规则卡片与规范册的字段结构。
+description: 撰写、修订或审阅流程类文档（正文由流程图及其配套节点章节承载的文档）时使用。把图与节点结构约束转成落笔次序上的可执行工序，并指向权威源的原文与判定口径。只管流程类文档的图与节点结构。正文行文表述取文档撰写 SKILL。
 whenToUse: 撰写、修订或审阅正文由流程图与逐节点详述章节构成的文档时。
 ---
 
 # 流程类文档撰写工序
 
-本 skill 的工序由一条约束链推出：本册的判定只读「适用条件 → 承载动作 → 产出物」三段，故凡要生效的语义都必须落在产出物的子标签里，写在标题、注释或结构标记中的限制不具约束力。流程类文档的骨架由「H1 → 目标段 → 主图 → 逐节点章节」的落笔次序决定，故工序按该次序排列：先认体裁与立骨架，再画主图，最后逐节点展开并递归。执行时自上而下走。
+本 skill 的工序由一条约束链推出：本册的判定读卡片的三段——`scope`（适用条件）、`动作`、`产出物`——**以及**写出的 `失败行为` 与 `依赖`；故凡要生效的语义都必须落在这些字段与产出物的子标签里，写在标题、注释或结构标记中的限制不具约束力。流程类文档的骨架由「H1 → 目标段 → 主图 → 逐节点章节」的落笔次序决定，故工序按该次序排列：先认体裁与立骨架，再画主图，最后逐节点展开并递归。执行时自上而下走。
+
+## 术语
+
+- **节点（Node）**：主流程图或子流程图中的一个图形单元，写为一对标识符与描述名，形态 `ID["描述名"]`。
+- **结束型节点**：P-04 四种角色之一「开始与结束型」中承担流程收束的那一类节点；所有节点都须能沿出边到达它（P-05）。
+- **主干**：主流程图本身承载的流程骨架；节点的内部步骤不内联其中，改由其章节内的子流程图承载（P-02、P-08）。
+- **目标段**：H1 之后、首个 h2 之前的那个自然段落，陈述本图的核心目标（P-01）。
+- **信息串**：围栏起始行 ``` 之后紧跟的那个词（如 `mermaid`、`bash`），决定该围栏承载什么（P-11）。
+- **承载标题行 / 册正文 / 卡片字段行**：不属本 skill，取册层与卡片层规范。
 
 ## 判据源
 
 本 skill 的按条判据以全文唯一权威源为准：[流程类文档撰写规范](reference/process-doc-writing-constraints.md)——随本 skill 分发，本 skill 不复制其条款。本 skill 工序中的 `P-nn` 即该册的条目编号。行文另受工程级 SKILL [文档撰写 SKILL](../doc-writing/SKILL.md) 约束，其判据源为 [文档撰写规范](../doc-writing/reference/doc-writing-constraints.md)；单独分发本 skill 时以同名 skill 为准。
+
+## 路由表
+
+判据源位于 `reference/process-doc-writing-constraints.md`，条目编号自 `P-00` 起、**总数以该文件的标题行为准**：
+
+| 你要做的事 | 读哪几条 |
+|---|---|
+| 判体裁、立 H1、写目标段 | [P-00](reference/process-doc-writing-constraints.md#p-00-管辖范围按产出物划分)、[P-09](reference/process-doc-writing-constraints.md#p-09-文档以-h1-标题行开头)、[P-01](reference/process-doc-writing-constraints.md#p-01-h1-之后以自然段陈述本图的核心目标) |
+| 开主图章节、画主图 | [P-10](reference/process-doc-writing-constraints.md#p-10-主流程图落在首个-h2-章节)、[P-02](reference/process-doc-writing-constraints.md#p-02-首个-h2-只承载主流程图)、[P-11](reference/process-doc-writing-constraints.md#p-11-图以-mermaid-围栏承载) |
+| 节点标识符与描述名 | [P-03](reference/process-doc-writing-constraints.md#p-03-节点分标识符与描述名两槽描述名同图内不得重名) |
+| 节点形状与角色分型 | [P-04](reference/process-doc-writing-constraints.md#p-04-节点按角色分型同型取固定形状) |
+| 可达性与成环 | [P-05](reference/process-doc-writing-constraints.md#p-05-允许成环但每个节点都须可达完成节点) |
+| 逐节点成章、参数栏 | [P-06](reference/process-doc-writing-constraints.md#p-06-主流程图之后逐节点成章以自然语言详述其逻辑)、[P-07](reference/process-doc-writing-constraints.md#p-07-输入参数与输出参数按固定槽位标准化描述) |
+| 子流程递归展开 | [P-08](reference/process-doc-writing-constraints.md#p-08-子流程蓝图型节点在本章内先绘其图再递归成章) |
+| 行文表述 | 不属本册，取 [doc-writing](../doc-writing/reference/doc-writing-constraints.md) |
 
 ## 工序
 
@@ -39,11 +63,13 @@ whenToUse: 撰写、修订或审阅正文由流程图与逐节点详述章节构
 
 ## 自检
 
+**本清单是高频错项摘要，不是判据全集**；逐条判据以 `reference/` 规范各条自身的判定口径与语义判据为准。
+
 - 首行是 H1，全文 H1 恰有一行。
 - H1 之后的首个内容块是自然段落，且该段落不夹在 H1 与目标段之间的其它块里。
 - 首个 h2 章节内 mermaid 围栏恰为一个，且除该围栏外不含其它内容块。
 - 同一张图内没有重名的描述名，边的端点都指向本图节点。
 - 每个节点沿出边都能命中结束型节点，无出口的环已逐一点名。
-- 主流程图每个节点的标识符在后续章节标题中出现且仅出现一次，章节正文不含 mermaid 围栏。
+- 主流程图每个节点的标识符在后续章节标题中出现且仅出现一次；节点章节正文不含 mermaid 围栏——**子流程蓝图型节点的章节除外**，其章节内按工序 11 承载该节点的子流程图。
 - 每个节点章节的输入栏与输出栏都在位，无参数处写「无」。
 - 子流程图出现在其节点章节内、早于该子图的节点章节。
