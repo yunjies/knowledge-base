@@ -38,7 +38,7 @@ flowchart TB
 
 DSH 在自己的进程与页面里加载本插件，把运行所需的服务交付给两侧。工程有**两种落地形态**——cordis 与 bundle——二者共享全部业务逻辑，只有 `adapters/` 分叉；形态由构建期决定，不由业务模块决定。本流程描述的主干两形态通用，差异集中在 `MOUNT`。
 
-**两形态都已有活体证据**：cordis 形态以动态包在真实 DSH 进程里激活；bundle 形态在专用 profile `e2e-credentials` 里经 `dsh plugin add file:<pkg>`（官方挂载通道）装成行并跑通页面与业务面。bundle 形态仍**未注册进本仓库的任何 profile**，因而挂载是一个单独、显式的动作。这两项旧入口证据只适用于各自的旧入口，不能证明新 Dynamic Cordis aliases 已 Load。
+**两形态都已有活体证据**：cordis 形态以动态包在真实 DSH 进程里激活；bundle 形态在专用 profile `e2e-credentials` 里经 `dsh plugin add file:<pkg>`（官方挂载通道）装成行并跑通页面与业务面。bundle 形态仍**未注册进本仓库的任何 profile**，因而挂载是一个单独、显式的动作。当前 source-to-plugin 落地流程使用 bundle 形态。
 
 **输入**
 
@@ -66,7 +66,7 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 宿主侧另有一条插件自有的诊断落盘通道，与宿主 logger 并存：每条 `report()` 消息**先落盘、再走既有 logger**——落盘写 `$DSH_HOME/logs/dsh-credentials.log`（路径解析与行格式见 `src/host/adapters/file-log.ts`，一行一报可 grep），宿主 logger 目前只进 cordis `LoggerService` 的内存环形 buffer（`@deepseek-ai/cordis/src/logger.ts`），全宿主无 stdout/文件 exporter，故后者不落 journal。两形态的落盘实现不同：bundle 经 `file-log.ts` 同步 append（fire-and-forget 之下异步会重演「产生即蒸发」，写失败静默不抛）；cordis body 是 `new Function` 无 import，经既有 `shell` 服务把行从 stdin 追加到同一文件，`shell` 缺失时静默降级只走 logger。logger 缺失或抛错的行为不变。
 
-上表 bundle 一列已实测：宿主侧前缀路由由真实 `webServer` 注册并分发（未服务的操作答 404），客户端侧经同源 `fetch` POST 真实往返。该证据适用于 bundle 路径，不覆盖新 Dynamic Cordis aliases。
+上表 bundle 一列已实测：宿主侧前缀路由由真实 `webServer` 注册并分发（未服务的操作答 404），客户端侧经同源 `fetch` POST 真实往返。该证据适用于 bundle 路径。
 
 **输入**
 
@@ -805,15 +805,15 @@ flowchart TB
 2. `GRID`——该页真的渲染出目录行与摘要行，无 slot 崩溃；
 3. `WRITE`——值经**本仓库源码**的路径真的写进 `$DSH_HOME/.credentials.yaml`（redirect 后的 provider 文件），且任何回包都不含该值。
 
-以上活体证据适用于既有 Cordis/bundle 入口，不证明新 Dynamic Cordis aliases 已在 profile Register、Load 或 Load update，也不证明其真实 UI 页面或浏览器行为。
+以上活体证据适用于已验证的 Cordis/bundle 入口；目标部署 profile 是否已挂载 bundle，仍需在该 profile 中单独核验。
 
 **bundle 形态已实测**：装配、注册、路由、页面、业务面都有活体证据（`tests/e2e/` 的宿主探针 + `tests/live-mount-probe.mjs` 的装配探针）。`bundle.patch.yml` 仍携带可挂载的行而**刻意不注册**，使挂载保持为一个单独、显式的动作。以上 bundle 证据仅适用于 bundle 路径。
 
-**新 Dynamic Cordis aliases 尚无 profile 活体验证**：未在真实 profile 对 `dist/dynamic-cordis/dsh-credentials/host.js` 与可选的 `client.js` 执行 Register、Load 或 Load update，也未验证真实 UI 页面或浏览器行为；构建产物存在不等于插件已加载或可见。
+**目标 profile 的挂载状态未由本流程验证**：bundle 构建产物存在不等于目标 profile 已安装并加载；应按部署文档在目标 profile 中确认挂载与页面行为。
 
 **`tests/live-mount-probe.mjs` 当前基线即红**：报 `registered no tool`，且对干净的 git 树同样失败，属装配面 loader 环境的既有问题，与任何进行中的源码改动无关；在该探针恢复之前，「bundle 形态已实测」那条里的装配探针证据不可复算。
 
-**两种运行形态的构建产物边界**：bundle 与 Cordis 是本工程的两种运行形态。`npm run build:bundle` 产出 bundle；`npm run build:cordis` 产出的 `dist/cordis/cred/{host-body.js,client-body.js}` 是旧 Cordis 装配所用 body，不是第三种运行形态。旧构建均曾成功且产物非空，可复核 `npm run build:bundle && test -s dist/bundle/index.mjs && test -s dist/bundle/client.js` 与 `npm run build:cordis && test -s dist/cordis/cred/host-body.js && test -s dist/cordis/cred/client-body.js`；旧 Cordis body 不含静态 `import`（`new Function` 不支持），可复核 `grep -cE "^\s*import[\s(]" dist/cordis/cred/*.js` 为 0。新 Dynamic Cordis loader entry 由 `DSH_PLUGIN_LOADER=/path/to/plugin-loader npm run build:dynamic-cordis` 构建，产物是 `dist/dynamic-cordis/dsh-credentials/host.js` 与可选的 `client.js` aliases；动态构建 helper 从 `DSH_PLUGIN_LOADER` 读取 transform，未设置时明确报错。上述构建产物非空、构建或测试退出码 0 均不能证明 aliases 已被加载。完整静态套件由 `DSH_PLUGIN_LOADER=/path/to/plugin-loader npm test` 执行，判据为退出码 0 且没有跳过的转换用例。
+**两种运行形态的构建产物边界**：bundle 与 Cordis 是本工程的两种运行形态。`npm run build:bundle` 产出 bundle；`npm run build:cordis` 产出的 `dist/cordis/cred/{host-body.js,client-body.js}` 是 Cordis 装配所用 body。两种构建均须退出码 0 且产物非空，可分别执行 `npm run build:bundle && test -s dist/bundle/index.mjs && test -s dist/bundle/client.js` 与 `npm run build:cordis && test -s dist/cordis/cred/host-body.js && test -s dist/cordis/cred/client-body.js`；Cordis body 不含静态 `import`（`new Function` 不支持），可复核 `grep -cE "^\s*import[\s(]" dist/cordis/cred/*.js` 为 0。构建成功不能证明目标 profile 已挂载插件。完整静态套件由 `DSH_PLUGIN_LOADER=/path/to/plugin-loader npm test` 执行，判据为退出码 0 且没有跳过的转换用例。
 
 **`BSDONE` 证到哪一步，说清楚**：安装**跑完**这一段已取到证据——公钥装到远端、私钥按 0600 落盘、`~/.ssh/config` 段写全、远端脚本经 stdin 真的执行（`tests/e2e/bootstrap-success.e2e.mjs`）；凭据也确实送到了真实 sshd（`install-path.e2e.mjs`）。**但「密码认证对真实服务器成功」没有取到**，因为这台机器上做不到：sshd 需要可读的 shadow 条目，而 `/etc/shadow` 是 `root:shadow` 0640、`/etc/pam.d` 与 `/etc/nsswitch.conf` 只读、无 `uidmap`、无 `sudo`、无容器运行时（逐条实测见 [测试说明](dsh-credentials/tests/README.md) 的「密码认证在这台机器上做不到」）。`bootstrap-success` 因此用 `PATH` 上的 `ssh` 替身顶掉「一台会接受密码的服务器」这一件，其余全是本仓库自己的代码。换一台有 root 或已装 `uidmap` 的机器即可补上，届时把替身换回真 `ssh`。该探针的 ssh 替身已改为真实执行远端脚本并直通其 stdout（使宿主的回显比对能读到 `REMOTE_KEYLEN`／`REMOTE_KEY` 行），但该 shim 改动**只经真 shell 语义验证**（直接以完整与残缺参数形态执行 `INSTALL_KEY_COMMAND`：完整公钥逐字一致追加且幂等、残缺单词被 `REMOTE_REJECTED` 拦截、前 2 词截断被回显比对兜住），**未经 e2e 进程实跑**——本机 workspace-write 沙箱写不了 DSH_HOME profile（`EROFS`），探针在本机起不来。
 
