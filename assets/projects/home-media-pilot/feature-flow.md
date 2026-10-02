@@ -1830,10 +1830,318 @@ flowchart TD
   - `error_response`：错误响应；来源为 `SUPPORT_ERROR`
 - 输出参数：无
 
+## PROVIDER_SETTINGS
+
+Provider 设置流程只允许修改 Provider 配置：Jellyfin 使用 API key，NAS 的用户输入仅为主机/IP、端口、用户名与一次性密码。NAS 首次配置通过密码引导安装 ed25519 公钥；指纹与 known_hosts 行只用于本次确认，密码、指纹和 known_hosts 行均不进入持久化配置、响应或日志。
+
+```mermaid
+flowchart TD
+    START_PROVIDER(["进入 Provider 设置"]) --> TYPE_PROVIDER{"Provider 类型？"}
+    TYPE_PROVIDER -->|Jellyfin| API_KEY["提交 API key"]
+    TYPE_PROVIDER -->|NAS| SCAN_HOST[["扫描并确认主机指纹"]]
+    API_KEY --> TEST_PROVIDER["测试并记录状态"]
+    SCAN_HOST --> BOOTSTRAP_SSH[["一次性 SSH 引导"]]
+    BOOTSTRAP_SSH --> TEST_PROVIDER
+    TEST_PROVIDER --> PROVIDER_DONE(["Provider 配置完成"])
+    SCAN_HOST --> PROVIDER_ERROR(["拒绝：指纹不匹配"])
+    BOOTSTRAP_SSH --> PROVIDER_ERROR
+```
+
+### START_PROVIDER
+
+Web 设置页只展示 Provider 管理入口，不展示 Agent、自动化或通用凭据面板。
+
+- 输入参数：无
+- 输出参数：
+  - `provider_id`：字符串；去向为 `TYPE_PROVIDER`
+
+### TYPE_PROVIDER
+
+按注册表的 Provider 类型选择字段集合。Jellyfin 只接受 `api_key`；NAS 的持久化配置只接受主机、端口与用户名，密码仅作为一次性引导输入，不接受 API key、指纹或 known_hosts 行。
+
+- 输入参数：
+  - `provider_id`：字符串；来源为 `START_PROVIDER`
+- 输出参数：
+  - `api_key_request`：API key 配置请求；去向为 `API_KEY`
+  - `ssh_request`：SSH 配置请求；去向为 `SCAN_HOST`
+
+### API_KEY
+
+提交 Jellyfin API key 时只保存受保护引用或加密凭据，并在响应中返回配置状态而非秘密值。
+
+- 输入参数：
+  - `api_key_request`：配置请求；来源为 `TYPE_PROVIDER`
+- 输出参数：
+  - `provider_config`：已更新配置；去向为 `TEST_PROVIDER`
+
+### SCAN_HOST
+
+调用 `ssh-keyscan` 取得主机公钥并计算 SHA256 指纹。用户确认的指纹必须与待写入的 known_hosts 行重新计算结果一致；不一致时不连接目标机。
+
+```mermaid
+flowchart TD
+    START_HOST(["开始扫描主机"]) --> KEYSCAN["取得主机公钥"]
+    KEYSCAN --> VERIFY_FINGERPRINT{"用户确认指纹匹配？"}
+    VERIFY_FINGERPRINT -->|是| HOST_CONFIRMED(["主机密钥已确认"])
+    VERIFY_FINGERPRINT -->|否| HOST_REJECTED(["拒绝：指纹不匹配"])
+```
+
+#### START_HOST
+
+扫描流程入口，接收待确认的主机连接信息。
+
+- 输入参数：
+  - `ssh_request`：主机、端口与 SSH 用户；来源为 `TYPE_PROVIDER`
+- 输出参数：
+  - `scan_request`：主机扫描请求；去向为 `KEYSCAN`
+
+#### KEYSCAN
+
+使用 `ssh-keyscan` 取得主机公钥并计算 SHA256 指纹。
+
+- 输入参数：
+  - `scan_request`：主机扫描请求；来源为 `START_HOST`
+- 输出参数：
+  - `scanned_host_key`：known_hosts 行与指纹；去向为 `VERIFY_FINGERPRINT`
+
+#### VERIFY_FINGERPRINT
+
+把用户确认的指纹与待写入的 known_hosts 行重新计算结果比较；只有一致时才接受主机密钥。
+
+- 输入参数：
+  - `scanned_host_key`：扫描所得主机密钥；来源为 `KEYSCAN`
+  - `confirmed_fingerprint`：用户确认的指纹；来源为受保护请求体
+- 输出参数：
+  - `confirmed_host_key`：已确认主机密钥；去向为 `HOST_CONFIRMED`
+  - `fingerprint_error`：不匹配错误；去向为 `HOST_REJECTED`
+
+#### HOST_CONFIRMED
+
+输出通过校验的主机密钥，供一次性 SSH 引导使用。
+
+- 输入参数：
+  - `confirmed_host_key`：已确认主机密钥；来源为 `VERIFY_FINGERPRINT`
+- 输出参数：无
+
+#### HOST_REJECTED
+
+指纹不匹配时拒绝连接目标机。
+
+- 输入参数：
+  - `fingerprint_error`：不匹配错误；来源为 `VERIFY_FINGERPRINT`
+- 输出参数：无
+
+- 输入参数：
+  - `ssh_request`：主机、端口与 SSH 用户；来源为 `TYPE_PROVIDER`
+- 输出参数：
+  - `confirmed_host_key`：known_hosts 行与指纹；去向为 `BOOTSTRAP_SSH`
+  - `fingerprint_error`：不匹配错误；去向为 `PROVIDER_ERROR`
+
+### BOOTSTRAP_SSH
+
+生成临时 ed25519 密钥，并使用临时 askpass 文件通过已确认的 host key 连接目标机，将公钥写入 `authorized_keys`。成功与失败路径都在 finally 中擦除密码、私钥、askpass 与 known_hosts 临时文件；密码不作为命令参数，也不写入返回值或长期配置。
+
+```mermaid
+flowchart TD
+    START_BOOTSTRAP(["开始 SSH 引导"]) --> GENERATE_KEY["生成临时 ed25519 密钥"]
+    GENERATE_KEY --> INSTALL_KEY["通过已确认主机密钥安装公钥"]
+    INSTALL_KEY --> BOOTSTRAP_RESULT{"公钥安装成功？"}
+    BOOTSTRAP_RESULT -->|是| ERASE_TEMP["成功路径擦除临时凭据与文件"]
+    BOOTSTRAP_RESULT -->|否| ERASE_FAILED["失败路径擦除临时凭据与文件"]
+    ERASE_TEMP --> BOOTSTRAP_OK(["SSH 引导完成"])
+    ERASE_FAILED --> BOOTSTRAP_FAILED(["SSH 引导失败"])
+```
+
+#### START_BOOTSTRAP
+
+一次性 SSH 引导入口，接收已确认的主机密钥与密码。
+
+- 输入参数：
+  - `confirmed_host_key`：已确认主机密钥；来源为 `SCAN_HOST`
+  - `password`：一次性密码；来源为受保护请求体
+- 输出参数：
+  - `bootstrap_request`：引导请求；去向为 `GENERATE_KEY`
+  - `confirmed_host_key`：已确认主机密钥；去向为 `INSTALL_KEY`
+
+#### GENERATE_KEY
+
+生成临时 ed25519 密钥，密码不写入命令参数或长期配置。
+
+- 输入参数：
+  - `bootstrap_request`：引导请求；来源为 `START_BOOTSTRAP`
+- 输出参数：
+  - `temporary_key`：临时密钥；去向为 `INSTALL_KEY`
+
+#### INSTALL_KEY
+
+使用临时 askpass 文件和已确认的 host key 连接目标机，把公钥写入 `authorized_keys`。
+
+- 输入参数：
+  - `temporary_key`：临时密钥；来源为 `GENERATE_KEY`
+  - `confirmed_host_key`：已确认主机密钥；来源为 `START_BOOTSTRAP`
+- 输出参数：
+  - `install_result`：公钥安装结果；去向为 `BOOTSTRAP_RESULT`
+
+#### BOOTSTRAP_RESULT
+
+判定公钥安装是否成功，并确保成功与失败路径都会清理临时材料。
+
+- 输入参数：
+  - `install_result`：公钥安装结果；来源为 `INSTALL_KEY`
+- 输出参数：
+  - `cleanup_request`：清理请求；去向为 `ERASE_TEMP` 或 `ERASE_FAILED`
+
+#### ERASE_TEMP
+
+在成功路径擦除密码、私钥、askpass 与 known_hosts 临时文件。
+
+- 输入参数：
+  - `cleanup_request`：清理请求；来源为 `BOOTSTRAP_RESULT`
+- 输出参数：
+  - `public_key`：已安装公钥；去向为 `BOOTSTRAP_OK`
+
+#### ERASE_FAILED
+
+在失败路径同样擦除密码、私钥、askpass 与 known_hosts 临时文件。
+
+- 输入参数：
+  - `cleanup_request`：清理请求；来源为 `BOOTSTRAP_RESULT`
+- 输出参数：
+  - `bootstrap_error`：引导失败；去向为 `BOOTSTRAP_FAILED`
+
+#### BOOTSTRAP_OK
+
+SSH 引导成功出口，输出已安装公钥。
+
+- 输入参数：
+  - `public_key`：已安装公钥；来源为 `ERASE_TEMP`
+- 输出参数：无
+
+#### BOOTSTRAP_FAILED
+
+SSH 引导失败出口，输出错误但不泄露临时凭据。
+
+- 输入参数：
+  - `bootstrap_error`：引导失败；来源为 `ERASE_FAILED`
+- 输出参数：无
+
+- 输入参数：
+  - `confirmed_host_key`：已确认主机密钥；来源为 `SCAN_HOST`
+  - `password`：一次性密码；来源为受保护请求体
+- 输出参数：
+  - `public_key`：已安装公钥；去向为 `TEST_PROVIDER`
+  - `bootstrap_error`：引导失败；去向为 `PROVIDER_ERROR`
+
+### TEST_PROVIDER
+
+调用对应 Provider 的连接测试，只记录状态、消息和时间，不记录提交的秘密。
+
+- 输入参数：
+  - `provider_config`：Jellyfin 配置；来源为 `API_KEY`
+  - `public_key`：NAS 公钥结果；来源为 `BOOTSTRAP_SSH`
+- 输出参数：
+  - `test_result`：连接状态；去向为 `PROVIDER_DONE`
+
+### PROVIDER_ERROR
+
+拒绝错误配置或失败的 SSH 引导，不产生可继续使用的配置记录。
+
+- 输入参数：
+  - `fingerprint_error`：来源为 `SCAN_HOST`
+  - `bootstrap_error`：来源为 `BOOTSTRAP_SSH`
+- 输出参数：
+  - `error_response`：错误响应；去向为流程之外（请求方）
+
+### PROVIDER_DONE
+
+Provider 配置状态可查询，秘密值不回显。
+
+- 输入参数：
+  - `test_result`：来源为 `TEST_PROVIDER`
+- 输出参数：无
+
+## WEBUI_VERSION_EVIDENCE
+
+真实浏览器取证把 WebUI 左下角的版本呈现与 API、工程声明连成一条可复算路径：
+
+```mermaid
+flowchart TD
+    CAPTURE_START(["启动真实浏览器取证"]) --> START_API["启动 hmp API 与前端静态产物"]
+    START_API --> READ_VERSION["读取 API 与页面左下角版本"]
+    READ_VERSION --> MATCH{"三方版本相等？"}
+    MATCH -- 否 --> EVIDENCE_FAIL(["取证失败"])
+    MATCH -- 是 --> REVERSE_PROOF["改声明并重启，验证页面随之改变"]
+    REVERSE_PROOF --> EVIDENCE_DONE(["效果图与报告可复算"])
+    REVERSE_PROOF --> EVIDENCE_FAIL
+```
+
+### CAPTURE_START
+
+取证入口位于项目克隆的 `tests/e2e/capture_webui.cjs`。
+
+- 输入参数：无
+- 输出参数：
+  - `capture_run`：一次取证运行；去向为 `START_API`
+
+### START_API
+
+启动 API 并将 `FRONTEND_DIST` 指向已构建的前端静态目录。
+
+- 输入参数：
+  - `capture_run`：来源为 `CAPTURE_START`
+- 输出参数：
+  - `api_origin`：可访问的本地 API 地址；去向为 `READ_VERSION`
+
+### READ_VERSION
+
+真实 Chromium 打开入口页，读取 `.sidebar-version b`，同时读取 `GET /version` 与 `pyproject.toml` 的工程声明。
+
+- 输入参数：
+  - `api_origin`：来源为 `START_API`
+- 输出参数：
+  - `version_triplet`：页面、API、工程声明三个版本值；去向为 `MATCH`
+
+### MATCH
+
+只有三个值相等才通过；这证明页面没有只显示一个占位字串。
+
+- 输入参数：
+  - `version_triplet`：来源为 `READ_VERSION`
+- 输出参数：
+  - `matched_version`：三方相等的版本值；去向为 `REVERSE_PROOF`
+  - `mismatch`：不相等证据；去向为 `EVIDENCE_FAIL`
+
+### REVERSE_PROOF
+
+将 `pyproject.toml` 的声明临时改为另一个值，重启 API，再次读取 API 与页面，断言两者均随声明改变；无论断言成功或失败，脚本都恢复原文件。
+
+- 输入参数：
+  - `matched_version`：来源为 `MATCH`
+- 输出参数：
+  - `changed_version`：反证通过后的版本值；去向为 `EVIDENCE_DONE`
+  - `reverse_failure`：页面未随声明改变；去向为 `EVIDENCE_FAIL`
+
+### EVIDENCE_FAIL
+
+三方不相等或反证不成立时，不得把截图当作版本正确性的证据。
+
+- 输入参数：
+  - `mismatch`：来源为 `MATCH`
+  - `reverse_failure`：来源为 `REVERSE_PROOF`
+- 输出参数：无
+
+### EVIDENCE_DONE
+
+取证输出为 `tests/.artifacts/screenshots/hmp-webui-version.png` 与 `tests/.artifacts/webui-version-report.json`；二者由 `node tests/e2e/capture_webui.cjs` 重建，不提交为源文件。
+
+- 输入参数：
+  - `changed_version`：来源为 `REVERSE_PROOF`
+- 输出参数：无
+
 ## 未验证面
 
 以下环节**尚无证据**，读到这些部分时不要当作已验证：
 
 - **前端包声明里的版本未收敛**。`src/frontend/package.json` 的 `version` 字段是 npm 私有包字段，当前不参与版本取回与呈现；它与工程声明的 `project.version` 之间没有自动化关联，改动工程声明时须人工同步。取回路径为该文件的 `version` 字段。
 - **取回发生在进程启动时**。`APP_VERSION` 在模块级求值一次，此后请求只回送该值；工程声明改动后已在运行的进程仍报旧版本，须重启进程才能取回新值。
-- **呈现效果只有源码层证据**。左下方渲染、取回独立于首屏其余后台取回、源码内无版本字面量这三点由镜像套件的静态面用例守住（跑法与判据取回自克隆内的 `tests/README.md`）；真实浏览器里的绘制结果尚无活体证据。
+- **浏览器交互的完整范围**仍未验证。左下角版本取回与绘制已有 `tests/e2e/capture_webui.cjs` 的活体证据，但该轨不覆盖首屏其它交互、真实反向代理路径或容器内浏览器运行。
