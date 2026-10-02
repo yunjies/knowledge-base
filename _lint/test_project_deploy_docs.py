@@ -781,44 +781,28 @@ def test_the_migrated_note_is_gone_and_its_practices_survived(repo) -> None:
     )
 
 
-def test_dsh_credentials_documents_both_landing_forms(repo) -> None:
-    """`dsh-credentials` must give both the cordis and the bundle landing path.
+def test_dsh_credentials_documents_the_bundle_landing_path_only(repo) -> None:
+    """The deploy guide must state the supported source-to-plugin route.
 
-    Asserted as two *independent* signals rather than a keyword. A document could
-    mention `cordis_define` once in a passing sentence and give no building or
-    activation step, and a keyword check would read that as coverage. Each form
-    is therefore required to bring its own build entry point, its own activation
-    entry point, and its own artifact path, so a document that drops one form —
-    or keeps only its name — fails.
-
-    The pairing is what makes the assertion non-vacuous: the two forms are
-    checked against **different** entry points, so a document that substituted
-    one form's commands for the other's cannot satisfy both.
+    Build and official installation are separate claims: requiring both prevents
+    a mention of bundle from standing in for a usable deployment procedure. The
+    retired Dynamic Cordis command and UI route must not remain as alternate
+    instructions, since that would make readers choose between incompatible
+    delivery paths.
     """
     document = paths.repository_root() / "assets" / "projects" / "dsh-credentials" / "deploy.md"
     text = text_of(document)
     assert text.strip(), f"{paths.relative(document)} is missing or empty"
 
-    forms = {
-        "cordis": {
-            "build": re.compile(r"npm\s+run\s+build:cordis"),
-            "activate": re.compile(r"cordis_define"),
-        },
-        "bundle": {
-            "build": re.compile(r"npm\s+run\s+build:bundle"),
-            "activate": re.compile(r"dsh\s+plugin\s+add"),
-        },
+    required = {
+        "bundle build": re.compile(r"npm\s+run\s+build:bundle"),
+        "official mount": re.compile(r"dsh\s+plugin\s+add"),
     }
-    offenders = []
-    for form, needed in forms.items():
-        for part, pattern in needed.items():
-            if not pattern.search(text):
-                offenders.append(f"the {form} form declares no {part} step ({pattern.pattern})")
-    assert offenders == [], (
-        "dsh-credentials/deploy.md must state both landing forms — cordis for a session-scoped "
-        f"dynamic package and bundle for a profile-resident install — each with its own commands: "
-        f"{offenders}"
-    )
+    absent = [name for name, pattern in required.items() if not pattern.search(text)]
+    assert absent == [], f"dsh-credentials/deploy.md omits required bundle steps: {absent}"
+
+    retired = re.compile(r"Dynamic Cordis|dynamic-cordis|build:dynamic-cordis", re.IGNORECASE)
+    assert not retired.search(text), "dsh-credentials/deploy.md still advertises the retired Dynamic Cordis route"
 
 
 def test_every_named_entry_point_exists_in_its_checkout(repo) -> None:
