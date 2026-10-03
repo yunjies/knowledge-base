@@ -14,7 +14,9 @@ prompt:
 ```mermaid
 flowchart TB
   START(["需求就位，可开工"]) --> DEVELOP[["开发阶段"]]
-  DEVELOP --> TEST[["测试阶段"]]
+  DEVELOP --> DEV_GATE{"开发阶段交付可继续？"}
+  DEV_GATE -->|"已交付开发结果"| TEST[["测试阶段"]]
+  DEV_GATE -->|"开发阻塞未解"| BLOCKED(["阻塞：等需求方确认"])
   TEST --> TEST_GATE{"用例全绿？"}
   TEST_GATE -->|"全绿"| ARCHIVE[["归档阶段"]]
   TEST_GATE -->|"有失败用例"| DEVELOP
@@ -25,13 +27,12 @@ flowchart TB
   REQUESTER_APPROVAL -->|"同意"| DONE(["需求完成，本文件归档"])
   REQUESTER_APPROVAL -->|"未同意或未回复"| APPROVAL_WAIT["等待需求方确认"]
   APPROVAL_WAIT -->|"需求方确认后"| REQUESTER_APPROVAL
-  DEVELOP -.->|"做不下去"| BLOCKED(["阻塞：等需求方确认"])
   BLOCKED -.->|"确认后"| DEVELOP
 
   classDef todo fill:#f9d71c,stroke:#8a6d00,color:#000
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
-  class DEVELOP,TEST,ARCHIVE,ACCEPT,TEST_GATE,ACCEPT_GATE,REQUESTER_APPROVAL,APPROVAL_WAIT,DONE todo
+  class START,DEVELOP,DEV_GATE,TEST,ARCHIVE,ACCEPT,TEST_GATE,ACCEPT_GATE,REQUESTER_APPROVAL,APPROVAL_WAIT,DONE todo
   class BLOCKED stuck
 ```
 
@@ -55,49 +56,65 @@ flowchart TB
 
 **边界**：它只改 `target` 指到的内容，不改需求未提及的相邻模块；发现必须改动需求之外的代码时停下并报出，不自行扩大范围。
 
+**项目仓库分支策略**：当 `target` 指向 `assets/projects/<项目>/<repository>/` 时，先确认该仓库当前分支是 `main`，并在 `main` 上开发、测试和验证；不为需求创建专用分支，也不安排需求分支的合并或删除。若仓库不在 `main`，或需求要求多人协作而此规则不适用，先暂停并向需求方确认，不自行切换或重置分支。
+
 **输入**
 
 - `REQ_SPEC`：本需求的规格；来源为 `START`。
 - `FAILURE_REPORT`：失败用例与原因；来源为 `T_BACK`。
 - `ACCEPT_FAILURE`：漏改或多余的处置要求；来源为 `C_OUT`。
-- `RESOLVED`：已确认的条件；来源为 `BLOCKED`。
+- `DEV_RESOLVED`：开发阻塞已排除；来源为 `BLOCKED`。
+- `DEV_RESULT`：开发子流程交付的改动清单与自测结果；来源为 `D_OUT`。
+- `OPEN_QUESTION`：开发子流程交付的未解条件；来源为 `D_FAIL`。
 - `TEST_VERDICT`：全绿与否；来源为 `TEST_GATE`。
 - `ACCEPT_VERDICT`：逐条对应与否；来源为 `ACCEPT_GATE`。
 
 **输出**
 
-- `DEV_RESULT`：改动清单与自测结果；去向为 `TEST`、`ARCHIVE`、`ACCEPT`。
-- `OPEN_QUESTION`：悬置的条件；去向为 `BLOCKED`。
+- `REQ_SPEC`：本轮需求规格；去向为 `D_IN`。
+- `FAILURE_REPORT`：上一轮失败用例与原因（若本轮由测试失败返回）；去向为 `D_IN`。
+- `ACCEPT_FAILURE`：验收发现的漏改或范围外改动（若本轮由验收退回）；去向为 `D_IN`。
+- `DEV_RESOLVED`：已解除的开发阻塞（若本轮由阻塞返回）；去向为 `D_IN`。
+- `TEST_VERDICT`：上一轮测试判定（若有）；去向为 `D_IN`。
+- `ACCEPT_VERDICT`：上一轮验收判定（若有）；去向为 `D_IN`。
+- `DEV_RESULT`：改动清单与自测结果；去向为 `DEV_GATE`。
+- `OPEN_QUESTION`：悬置的条件；去向为 `DEV_GATE`。
 
 ```mermaid
 flowchart TB
   D_IN(["接到需求规格"]) --> D_AGENT["起 subagent 读代码并定位改动点"]
   D_AGENT --> D_EDIT["按最小范围改代码"]
   D_EDIT --> D_SCOPE{"改动是否越出 target 边界？"}
-  D_SCOPE -->|"越出"| D_STOP(["停下，报出越界点等确认"])
+  D_SCOPE -->|"越出"| D_STOP{"需求方处置后能否继续？"}
   D_SCOPE -->|"未越出"| D_REPORT["交出改动清单与自测结果"]
-  D_STOP -->|"确认后"| D_AGENT
-  D_REPORT --> D_OUT(["进入测试阶段"])
+  D_STOP -->|"已确认可执行范围"| D_AGENT
+  D_STOP -->|"未能形成可执行范围"| D_FAIL(["报告未解条件"])
+  D_REPORT --> D_OUT(["交出开发结果"])
 
   classDef todo fill:#f9d71c,stroke:#8a6d00,color:#000
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class D_IN done
-  class D_AGENT,D_EDIT,D_SCOPE,D_REPORT,D_OUT todo
-  class D_STOP stuck
+  class D_AGENT,D_EDIT,D_SCOPE,D_STOP,D_REPORT,D_OUT todo
+  class D_FAIL stuck
 ```
 
 ### D_IN
 
-承接 `START` 交来的需求规格，把它整理成交给 subagent 的作业书。本节点不出分支。
+承接父级 `DEVELOP` 分发的本轮需求、上一轮反馈与阻塞解决结果，把它们整理成交给 subagent 的作业书。本节点不出分支。
 
 **输入**
 
-- `REQ_SPEC`：本需求的规格；来源为 `START`。
+- `REQ_SPEC`：本轮需求规格；来源为 `DEVELOP`。
+- `FAILURE_REPORT`：上一轮失败用例与原因（若本轮由测试失败返回）；来源为 `DEVELOP`。
+- `ACCEPT_FAILURE`：验收发现的漏改或范围外改动（若本轮由验收退回）；来源为 `DEVELOP`。
+- `DEV_RESOLVED`：已解除的开发阻塞（若本轮由阻塞返回）；来源为 `DEVELOP`。
+- `TEST_VERDICT`：上一轮测试判定（若有）；来源为 `DEVELOP`。
+- `ACCEPT_VERDICT`：上一轮验收判定（若有）；来源为 `DEVELOP`。
 
 **输出**
 
-- `DEV_BRIEF`：作业书，含 `target`、`output`、`prompt` 与本节边界；去向为 `D_AGENT`。
+- `DEV_BRIEF`：作业书，含 `REQ_SPEC`、`FAILURE_REPORT`、`ACCEPT_FAILURE`、`DEV_RESOLVED`、`TEST_VERDICT`、`ACCEPT_VERDICT`（有对应来源时附带）、范围边界及项目仓库分支策略；去向为 `D_AGENT`。
 
 ### D_AGENT
 
@@ -138,7 +155,7 @@ flowchart TB
 
 ### D_STOP
 
-越界出口：停下并把越界点报给需求方，等其确认是扩大 `target` 还是收回改动。
+越界出口：把范围差异交给需求方确认；明确确认可执行的新范围或收回越界改动后回到开发，无法形成可执行范围时报告未解条件。
 
 **输入**
 
@@ -147,11 +164,24 @@ flowchart TB
 
 **输出**
 
-- `SCOPE_RESOLVED`：已确认的边界；去向为 `D_AGENT`。
+- `SCOPE_RESOLVED`：已确认的可执行边界；去向为 `D_AGENT`。
+- `OPEN_QUESTION`：无法继续的未解条件；去向为 `D_FAIL`。
+
+### D_FAIL
+
+开发子流程阻塞出口：报告无法继续的条件，并把它交给父级 `DEVELOP` 做出口判定。
+
+**输入**
+
+- `OPEN_QUESTION`：无法继续的未解条件；来源为 `D_STOP`。
+
+**输出**
+
+- `OPEN_QUESTION`：开发阻塞条件；去向为 `DEVELOP`。
 
 ### D_REPORT
 
-交出改动清单与开发自测结果，作为进入测试阶段的输入。**开发自测不等于测试阶段**：这里只证明改动跑得起来，覆盖需求要求的行为由测试阶段负责。
+交出改动清单与开发自测结果，作为开发出口判定的输入。**开发自测不等于测试阶段**：这里只证明改动跑得起来，覆盖需求要求的行为由测试阶段负责。
 
 **输入**
 
@@ -164,7 +194,7 @@ flowchart TB
 
 ### D_OUT
 
-开发阶段出口：改动已在工作区就位且未越界。本节点无出边。
+开发子流程成功出口：改动已在工作区就位且未越界；将开发结果交给父级 `DEVELOP` 做出口判定。
 
 **输入**
 
@@ -172,7 +202,21 @@ flowchart TB
 
 **输出**
 
-- `DEV_RESULT`：改动清单与自测结果；去向为 `TEST`。
+- `DEV_RESULT`：改动清单与自测结果；去向为 `DEVELOP`。
+
+## DEV_GATE
+
+开发出口判定：只有 `DEV_RESULT` 完整且不存在未解条件时进入测试；其余状态整理为 `OPEN_QUESTION` 并转入阻塞等待。
+
+**输入**
+
+- `DEV_RESULT`：改动清单与自测结果；来源为 `DEVELOP`。
+- `OPEN_QUESTION`：开发子流程未解的条件；来源为 `DEVELOP`。
+
+**输出**
+
+- `DEV_RESULT`：可测试的开发结果；去向为 `TEST`、`ARCHIVE`、`ACCEPT`。
+- `OPEN_QUESTION`：阻塞条件；去向为 `BLOCKED`。
 
 ## TEST
 
@@ -186,7 +230,7 @@ flowchart TB
 
 **输入**
 
-- `DEV_RESULT`：改动清单与自测结果；来源为 `DEVELOP`。
+- `DEV_RESULT`：改动清单与自测结果；来源为 `DEV_GATE`。
 
 **输出**
 
@@ -217,7 +261,7 @@ flowchart TB
 
 **输入**
 
-- `DEV_RESULT`：改动清单与自测结果；来源为 `DEVELOP`。
+- `DEV_RESULT`：改动清单与自测结果；来源为 `DEV_GATE`。
 
 **输出**
 
@@ -331,7 +375,7 @@ flowchart TB
 
 **输入**
 
-- `DEV_RESULT`：改动清单；来源为 `DEVELOP`。
+- `DEV_RESULT`：改动清单；来源为 `DEV_GATE`。
 - `TEST_EVIDENCE`：用例与运行结果；来源为 `TEST`。
 - `TEST_VERDICT`：全绿与否；来源为 `TEST_GATE`。
 
@@ -361,7 +405,7 @@ flowchart TB
 
 **输入**
 
-- `DEV_RESULT`：改动清单；来源为 `DEVELOP`。
+- `DEV_RESULT`：改动清单；来源为 `DEV_GATE`。
 - `TEST_EVIDENCE`：用例与运行结果；来源为 `T_PASS`。
 
 **输出**
@@ -442,10 +486,14 @@ flowchart TB
 **输入**
 
 - `ARCHIVED`：已落档的文档；来源为 `ARCHIVE`。
-- `DEV_RESULT`：改动清单；来源为 `DEVELOP`。
+- `DEV_RESULT`：改动清单；来源为 `DEV_GATE`。
+- `COMPARISON`：逐条比对结果；来源为 `C_AGENT`。
+- `ACCEPTED`：验收子流程交回的通过结论；来源为 `C_ACCEPT_OUT`。
 
 **输出**
 
+- `COMPARISON`：逐条对应关系与差异；去向为 `ACCEPT_GATE`。
+- `ACCEPTED`：无遗漏且无需求外改动的验收结论；去向为 `REQUESTER_APPROVAL`。
 - `ACCEPT_FAILURE`：漏改或多余的处置要求；去向为 `DEVELOP`。
 
 ```mermaid
@@ -457,13 +505,13 @@ flowchart TB
   C_EXTRA -->|"有"| C_BACK
   C_EXTRA -->|"无"| C_PASS["验收通过"]
   C_BACK --> C_OUT(["回到开发阶段"])
-  C_PASS --> C_DONE(["需求完成"])
+  C_PASS --> C_ACCEPT_OUT(["验收通过，交需求方确认"])
 
   classDef todo fill:#f9d71c,stroke:#8a6d00,color:#000
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class C_IN done
-  class C_AGENT,C_COVER,C_EXTRA,C_PASS,C_DONE todo
+  class C_AGENT,C_COVER,C_EXTRA,C_PASS,C_ACCEPT_OUT todo
   class C_BACK,C_OUT stuck
 ```
 
@@ -474,7 +522,7 @@ flowchart TB
 **输入**
 
 - `ARCHIVED`：已落档的文档；来源为 `ARCHIVE`。
-- `DEV_RESULT`：改动清单；来源为 `DEVELOP`。
+- `DEV_RESULT`：改动清单；来源为 `DEV_GATE`。
 
 **输出**
 
@@ -491,7 +539,7 @@ flowchart TB
 
 **输出**
 
-- `COMPARISON`：逐条对应关系与差异；去向为 `C_COVER`。
+- `COMPARISON`：逐条对应关系与差异；去向为 `C_COVER` 与父级 `ACCEPT`。
 
 ### C_COVER
 
@@ -552,11 +600,11 @@ flowchart TB
 
 **输出**
 
-- `ACCEPTED`：验收通过；去向为 `REQUESTER_APPROVAL`。
+- `ACCEPTED`：验收通过；去向为 `C_ACCEPT_OUT`。
 
-### C_DONE
+### C_ACCEPT_OUT
 
-需求完成的收尾：只有需求方明确同意归档后，本条需求才算完成。此时按 [本目录 README](README.md) 的边界声明，把**本文件整篇移入 [assets/archive/](../archive/README.md)**——是移动不是复制；归档前把全部节点状态标为已执行，文件内容不再改写。本节点无出边。
+验收子流程出口：把验收通过结论交给父级 `ACCEPT` 汇总，再由外层的 `REQUESTER_APPROVAL` 交给请求方决定是否归档。本节点不移动需求文档，也不提交或推送知识库；它只结束独立验收阶段。
 
 **输入**
 
@@ -564,7 +612,7 @@ flowchart TB
 
 **输出**
 
-- 无。
+- `ACCEPTED`：验收通过；去向为 `ACCEPT`。
 
 ## ACCEPT_GATE
 
@@ -576,11 +624,11 @@ flowchart TB
 
 **输出**
 
-- `ACCEPT_VERDICT`：逐条对应与否；去向为 `DEVELOP` 或 `REQUESTER_APPROVAL`。
+- `ACCEPT_VERDICT`：逐条对应与否；去向为 `DEVELOP`、`REQUESTER_APPROVAL` 或 `DONE`。
 
 ## DONE
 
-需求完成的终点标记：四个阶段都走完、验收通过，且需求方明确同意归档；本节点只在收到该同意后成立。本节点无出边。
+需求完成的终点标记：四个阶段都已完成、验收通过且需求方明确同意归档。本节点输出是把本文件整篇移入 `assets/archive/`，移动后不再修改本文件；知识库 GitHub 提交与推送是移动后的仓库发布步骤，按[assets/archive/README.md](../archive/README.md)办理，不记录为本文件的流程节点状态。
 
 **输入**
 
@@ -589,7 +637,7 @@ flowchart TB
 
 **输出**
 
-- `ARCHIVE_MOVE`：把本文件移入 `assets/archive/` 的动作；去向为流程外部的归档动作。
+- `ARCHIVE_MOVE`：把本文件整篇移入 `assets/archive/` 的动作；去向为流程外部的归档操作。
 
 ## REQUESTER_APPROVAL
 
@@ -597,7 +645,7 @@ flowchart TB
 
 **输入**
 
-- `ACCEPTED`：验收通过；来源为 `C_PASS`。
+- `ACCEPTED`：验收通过；来源为 `ACCEPT`。
 - `ACCEPT_VERDICT`：逐条对应与否；来源为 `ACCEPT_GATE`。
 - `REQUESTER_DECISION`：需求方确认后的决定；来源为 `APPROVAL_WAIT`。
 
@@ -619,12 +667,12 @@ flowchart TB
 
 ## BLOCKED
 
-阻塞出口：流程中遇到做不下去的条件时停在这里等协助。**停在这里是本流程的正常出口，不是失败**——一项判据未定的需求，强行推进只会产出一个自己都判不了的实现。
+阻塞出口：开发阶段无法继续时停在这里等协助。阻塞事项解决后返回开发阶段；未解决前不得把开发结果送入测试。
 
 **输入**
 
-- `OPEN_QUESTION`：悬置的条件；来源为 `DEVELOP`。
+- `OPEN_QUESTION`：开发阶段悬置的条件；来源为 `DEV_GATE`。
 
 **输出**
 
-- `RESOLVED`：已确认的条件；去向为 `DEVELOP`。
+- `DEV_RESOLVED`：开发阻塞已排除；去向为 `DEVELOP`。
