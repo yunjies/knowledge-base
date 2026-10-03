@@ -79,7 +79,7 @@
 
 ## 目录结构
 
-- `_meta/`：本知识库自有的执行规范与撰写样本——约束"应当怎么做"。它与 `.agents/skills/*/reference/` 的分工：**随 skill 分发的判据册**（文档撰写、流程类文档撰写、规则卡片撰写三册）以 `.agents/` 为权威源，`_meta/` 不复制其条款；**不随 skill 分发的**（agent 行为约束、测试分层与其样本）归此处。`_meta/` 同时是 `_lint/` 判定知识库根的双标志之一，不得整体移除。
+- `_meta/`：本知识库自有的执行规范与撰写样本——约束"应当怎么做"。它与 `.agents/skills/*/reference/` 的分工：**随 skill 分发的判据册**（文档撰写、流程类文档撰写、规则卡片撰写三册）以 `.agents/` 为权威源，`_meta/` 不复制其条款；**不随 skill 分发的**（agent 行为约束、测试分层与其样本）归此处。`_meta/notes/doc-writing-standards/samples/` 承载按项目交付形态划分的开发流程样本——开发项目时按该项目的交付形态装载对应的一份：交付形态是 DSH 插件的，读[源码落地为插件的流程](_meta/notes/doc-writing-standards/samples/source-to-plugin-flow.md)；交付形态是容器镜像的，读[源码落地为容器镜像的流程](_meta/notes/doc-writing-standards/samples/source-to-docker-flow.md)；建立或选层测试套件的，读[为项目建立测试套件的流程](_meta/notes/doc-writing-standards/samples/source-to-tests-flow.md)。`_meta/` 同时是 `_lint/` 判定知识库根的双标志之一，不得整体移除。
 - `.agents/skills/`：本工程自定义 SKILL 的落点，随工程入库，由 DSH 按工程根扫描装载。判据册三册在此承载权威源；`_lint/` 的守护面不含此目录——其承载的是随包分发的判据册，不属本知识库自己的文档。
 - `_lint/`：上述规范中**可机械判定**那部分的可执行守护，只读本知识库自己的文档。判据与运行方式见[「本知识库的文档守护」](#本知识库的文档守护)。
 - `assets/projects/`：被本知识库收录的项目，每个项目一个子目录。项目目录下直接承载该项目的产物：项目自身的独立仓库克隆各占一层子目录（`<项目>/<repository>/`），项目的流程文档为 `<项目>/feature-flow.md`，项目的部署与使用说明为 `<项目>/deploy.md`——前者讲它已实现的流程与分支，后者讲它怎么部署起来、怎么用、部署机上怎么验证与排查。仓库克隆内部的目录布局（含其自身的 `src/`）由该项目决定，不在本知识库约束范围内。
