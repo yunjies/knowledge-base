@@ -240,23 +240,23 @@ flowchart TD
 
 ## CONFIG_LIBRARY
 
-建立 Pilot 的媒体库模型并绑定 Provider。媒体库由名称、一个或多个逻辑根路径、元数据 Provider 与字幕 Provider 构成；逻辑根路径到物理路径的映射来自部署环境，媒体库本身存于应用数据库。
+建立媒体库并绑定元数据与字幕 Provider Link。媒体库保存 Provider 类型标识及对应 Link ID；Link 属于一个 Provider 类型，同一类型可有多个 Link。逻辑根路径到物理路径的映射来自部署环境，媒体库与 Link 配置存于应用数据库。
 
-数据库为空时，部署设置只作一次性导入：已存在任何媒体库即不再导入，配置权威此后归数据库。Provider 的行由 Provider 注册表发现并补齐，端点、凭据与启用状态属于数据库中的可写配置，不随重新发现被覆盖。
+ProviderRegistry 合并内建定义与 `home_media_pilot.providers` entry-point 扩展定义；类型定义是可发现目录，不等于已有运行适配器。内建元数据/字幕工厂只为源码映射表覆盖的类型构造适配器，不能据注册发现推断任意扩展已接通。
 
-校验在写入前完成：逻辑根路径必须存在于部署映射；同一逻辑根路径不得归属两个媒体库；绑定的 Provider 必须已注册且已启用。任一校验失败即拒绝写入并返回错误，不落库。
+媒体库写入前校验逻辑根路径已配置且未被其它媒体库占用，并校验所选 Link 存在、属于请求声明的同一 Provider 类型且已启用。未给 Link ID 的兼容请求按类型选取启用 Link 中优先级最小者；没有 Link 时才检查旧 ProviderConfig 兼容配置。绑定 Link 被使用时不能删除。
 
-Provider 连接测试使用请求提交的有效临时值；未提交的值取已保存的 endpoint、timeout_seconds、credential_ref 与数据库凭据，并按 credential_ref 读取环境凭据。秘密值不回显。测试参数与已保存配置不同时，响应标记为“临时配置测试（未保存）”，只返回该次测试结果，不更新已保存的上次测试状态、消息与检查时刻；参数与已保存配置相同时，verified 或 failed 结果、消息与检查时刻写入数据库。修改 Provider 的 enabled、endpoint、timeout_seconds、credential_ref 或凭据会清空既有连接结果并恢复为未测试；priority 变化不清空结果。Alembic 迁移会清空已有连接状态、消息与检查时刻；没有迁移标记、由模型建表的数据库在 stamp head 时也清空这些历史状态。
+应用启动与 Provider 管理操作会确保注册定义对应的 ProviderConfig 兼容行，并为尚无 Link 的类型创建“默认链接”。迁移 `0012_provider_links` 将旧 ProviderConfig 复制为默认 Link，并将媒体库旧 Provider 标识绑定迁至 Link ID。旧 ProviderConfig 更新时，服务只把字段同步写入同一 Provider 类型下名称恰为“默认链接”的 ProviderLink；从 Link API 创建或更新 Link 不会反向写回 ProviderConfig。ProviderConfig 与 ProviderLink 因而是两套可写接口、状态不对称的兼容面：旧客户端更新能覆盖默认 Link 的值，而 Link API 的改值可能让 ProviderConfig 长期保留旧值，造成状态漂移与排障/维护成本。
 
-设置页只对具有已实现连接测试适配器且注册定义声明支持测试的 Provider 显示测试按钮；第三方注册定义单独声明 supports_connection_test 不代表已有可调用的测试适配器。
+Link 可创建、更新、删除；凭据写入加密存储，响应不回传秘密值，`credential_ref` 可引用环境变量。连接测试仅对既声明支持且有内建测试适配器的类型开放；测试临时参数不改变已保存结果，使用已保存配置的测试才更新 Link 状态。Jellyfin、M-Team、qBittorrent、TVMaze、MetaTube 与 NAS 有连接测试适配器；OpenSubtitles 不支持连接测试。`POST /provider-links/{id}/test` 会针对指定 Link 测试连接；NAS 在此路由测试的是既有配置所对应逻辑根目录的只读访问，不是 SSH 连通性。
 
-元数据与字幕 Provider 由按类型键控的工厂表构造：每类 Provider 各有一张"标识到实现"的映射，装配时按已配置行或部署环境求出端点，取不到端点的实现不注册。因此**未配置端点的 Provider 不会出现在路由中**，对该库的检索随即以路由错误失败，而不是以一个指向空端点的实例失败。新增一类实现只改映射表与实现所在模块。
+元数据与字幕检索按媒体库所绑定的 Link ID 选择路由实例。当前内建适配器分别来自 `src/packages/frameworks/provider_stack.py` 中的元数据与字幕工厂映射；资源路由入口见 `src/packages/application/provider_routing.py` 与 `src/packages/application/metadata_matching.py`。Jellyfin、M-Team 与 qBittorrent 是全局服务构建器按同类型启用 Link 中最小 priority 选择；停用 Link 不参与选择。NAS 的 SSH 扫描与公钥 bootstrap 仍走 `/provider-configs/nas/ssh-bootstrap*` 兼容路径；bootstrap 完成后更新 ProviderConfig，并由兼容同步更新“默认链接”。ProviderLink 的连接测试则走 `/provider-links/{id}/test`，其 NAS 测试语义为既有配置的逻辑根目录只读访问；不得将其泛称为 NAS 测试都走兼容路由。Provider 定义与测试支持边界见 `src/packages/frameworks/providers.py`，Link CRUD 与绑定校验见 `src/packages/application/libraries.py`，迁移见 `src/migrations/versions/0012_provider_links.py`。从仓库根运行 `UV_CACHE_DIR=.uv-cache uv run pytest -q` 可复算后端断言；前端检查使用 `tsc -b && vite build`。这些检查不证明真实外部服务连通性。
 
 ```mermaid
 flowchart TD
     START_CFG(["收到媒体库配置请求"]) --> VALIDATE_ROOTS{"逻辑根路径已配置<br/>且未被占用？"}
     VALIDATE_ROOTS -- 否 --> REJECT_CFG(["拒绝：返回校验错误"])
-    VALIDATE_ROOTS -- 是 --> VALIDATE_PROVIDERS{"绑定 Provider<br/>已注册且启用？"}
+    VALIDATE_ROOTS -- 是 --> VALIDATE_PROVIDERS{"绑定 Link 存在、类型匹配<br/>且已启用？"}
     VALIDATE_PROVIDERS -- 否 --> REJECT_CFG
     VALIDATE_PROVIDERS -- 是 --> PERSIST_LIBRARY["写入媒体库与路径绑定"]
     PERSIST_LIBRARY --> CFG_DONE(["媒体库可用于扫描"])
@@ -265,8 +265,10 @@ flowchart TD
 - 输入参数：
   - `library_name`：字符串；来源为工程部署位置（WebUI 或 CLI 的请求体）
   - `logical_paths`：字符串列表；来源为工程部署位置
-  - `metadata_provider`：字符串，Provider 标识；来源为工程部署位置
-  - `subtitle_provider`：字符串，Provider 标识；来源为工程部署位置
+  - `metadata_provider`：字符串，Provider 类型标识；来源为请求
+  - `metadata_link_id`：标识符，元数据 Provider Link ID；来源为请求
+  - `subtitle_provider`：字符串，Provider 类型标识；来源为请求
+  - `subtitle_link_id`：标识符，字幕 Provider Link ID；来源为请求
 - 输出参数：
   - `library_record`：媒体库记录；去向为 `CFG_DONE`
   - `rejection`：错误响应；去向为流程之外（请求方）
@@ -278,8 +280,10 @@ flowchart TD
 - 输入参数：
   - `library_name`：字符串；来源为工程部署位置（WebUI 或 CLI 的请求体）
   - `logical_paths`：字符串列表；来源为工程部署位置
-  - `metadata_provider`：字符串，Provider 标识；来源为工程部署位置
-  - `subtitle_provider`：字符串，Provider 标识；来源为工程部署位置
+  - `metadata_provider`：字符串，Provider 类型标识；来源为请求
+  - `metadata_link_id`：标识符，元数据 Provider Link ID；来源为请求
+  - `subtitle_provider`：字符串，Provider 类型标识；来源为请求
+  - `subtitle_link_id`：标识符，字幕 Provider Link ID；来源为请求
 - 输出参数：
   - `library_request`：媒体库创建或更新请求；去向为 `VALIDATE_ROOTS`
 
@@ -295,7 +299,7 @@ flowchart TD
 
 ### VALIDATE_PROVIDERS
 
-校验元数据与字幕 Provider 绑定。判据是该 Provider 在配置表中存在且处于启用状态。
+校验元数据与字幕绑定。Provider 类型必须已注册；显式 Link ID 必须存在、Provider 类型匹配且启用。未给 Link ID 的兼容请求按类型选取启用 Link 中 priority 最小者；只有没有 Link 时才回退到 ProviderConfig 兼容配置。
 
 - 输入参数：
   - `library_request`：媒体库创建或更新请求；来源为 `VALIDATE_ROOTS`
@@ -305,7 +309,7 @@ flowchart TD
 
 ### PERSIST_LIBRARY
 
-把媒体库、其逻辑路径与 Provider 绑定写入应用数据库，并按名称唯一性约束拒绝重名。
+把媒体库、逻辑路径与 metadata_link_id、subtitle_link_id 写入应用数据库；Provider 类型标识与 Link ID 配对保存，并按媒体库名称唯一性拒绝重名。
 
 - 输入参数：
   - `library_request`：媒体库创建或更新请求；来源为 `VALIDATE_PROVIDERS`
@@ -591,7 +595,7 @@ flowchart TD
 
 由一个已索引资源生成元数据检索请求，向该资源所属媒体库绑定的元数据 Provider 搜索候选，并把候选集持久化为一次匹配会话。
 
-流程以资源身份为起点：从资源取标题、媒体类型、年份与季集构造检索请求，剧集类型向上归为剧集检索。逻辑根路径经 Provider 路由解析到唯一媒体库，再取该库绑定的元数据 Provider——路由在构造时即拒绝同一路径归属两个媒体库、以及未注册的 Provider。
+流程以资源身份为起点：从资源取标题、媒体类型、年份与季集构造检索请求，剧集类型向上归为剧集检索。逻辑根路径经 Provider 路由解析到唯一媒体库，再以该库的 metadata_link_id 选择 Link；媒体库绑定校验 Provider 类型与 Link 类型一致。应用层调用元数据搜索时使用绑定 Link 的 endpoint 与凭据配置。路由在构造时拒绝同一路径归属两个媒体库。源码入口见 `src/packages/application/provider_routing.py`、`src/packages/application/metadata_matching.py` 与 `src/packages/frameworks/provider_stack.py`。
 
 Provider 调用带有限次重试，仅对超时与不可用两类瞬时失败重试，业务错误、限流与认证失败立即上报。
 
@@ -643,7 +647,7 @@ flowchart TD
 
 ### RESOLVE_PROVIDER
 
-以资源的逻辑根路径经 Provider 路由取得该媒体库绑定的元数据 Provider，并确认其处于启用状态。
+从资源所属媒体库的 metadata_link_id 取得绑定 Link，再以其 Provider 类型构造路由实例；Link 不存在、类型不匹配或停用时路由失败。资源归属冲突在路由构造时拒绝。当前元数据工厂映射覆盖 TVMaze 与 MetaTube；扩展 entry-point 的注册发现本身不表示有对应 adapter builder。
 
 - 输入参数：
   - `resource_identity`：资源标识，提供逻辑根路径；来源为 `LOAD_RESOURCE`
@@ -809,7 +813,7 @@ flowchart TD
 
 由一个已索引资源搜索字幕候选，只读不下载。
 
-流程与元数据匹配共享同一套资源归属校验与 Provider 路由，差别在于取该媒体库绑定的字幕 Provider，并构造字幕检索请求。返回的候选仅供展示——**下载字幕不在此流程内**。
+流程与元数据匹配共享资源归属校验，按该媒体库的 subtitle_link_id 选择字幕 Link 并构造检索请求；绑定 Link 的 endpoint 与凭据用于字幕搜索调用。返回候选仅供展示——**下载字幕不在此流程内**。适配路径与边界见 `src/packages/frameworks/provider_stack.py`；真实 OpenSubtitles 在线行为未测试。
 
 ```mermaid
 flowchart TD
@@ -853,7 +857,7 @@ flowchart TD
 
 ### RESOLVE_SUB_PROVIDER
 
-以逻辑根路径经 Provider 路由取得该媒体库绑定的字幕 Provider，并确认其处于启用状态。
+从资源所属媒体库的 subtitle_link_id 取得绑定 Link，再以其 Provider 类型构造路由实例；Link 不存在、类型不匹配或停用时路由失败。当前字幕工厂映射覆盖 OpenSubtitles；注册发现不代表任意扩展已有 adapter builder，且 OpenSubtitles 不提供连接测试适配器。
 
 - 输入参数：
   - `resource_identity`：资源标识，提供逻辑根路径；来源为 `LOAD_SUB_RESOURCE`
@@ -933,7 +937,7 @@ flowchart TD
 
 对账以物理路径相等为唯一依据：Jellyfin 虚拟文件夹的位置逐一解析后与部署配置的物理根路径比较，取匹配上的逻辑根路径；无任何逻辑根路径匹配的文件夹记为跳过并给出原因，不创建媒体库。Jellyfin 返回重复库标识时判定为业务错误。
 
-匹配上的文件夹按 Jellyfin 来源与外部标识查找既有媒体库，找不到再按名称回退到人工建立的同名库——**回退链接保留该库既有的 Provider 与启用设置**，只补齐来源与外部标识并同步路径，不覆盖 Provider、不改变启用状态。两者都找不到时才新建，默认 Provider 取当前已启用的同类 Provider。
+匹配上的文件夹按 Jellyfin 来源与外部标识查找既有媒体库，找不到再按名称回退到人工建立的同名库——**回退链接保留该库既有的 Provider 类型、Link ID 与启用设置**，只补齐来源与外部标识并同步路径，不覆盖绑定。两者都找不到时才新建；其默认元数据与字幕 Link 从已启用的同类型 Link 中按 priority 选择。
 
 ```mermaid
 flowchart TD
@@ -1834,7 +1838,7 @@ flowchart TD
 
 ## PROVIDER_SETTINGS
 
-Provider 设置流程只允许修改 Provider 配置：Jellyfin 使用 API key，NAS 的用户输入仅为主机/IP、端口、用户名与一次性密码。NAS 首次配置通过密码引导安装 ed25519 公钥；指纹与 known_hosts 行只用于本次确认，密码、指纹和 known_hosts 行均不进入持久化配置、响应或日志。
+Provider 管理以 Provider Link 为可写配置单位，Link 按 Provider 类型区分并支持多条；ProviderConfig API 保留为旧客户端兼容面。NAS 首次 SSH 公钥引导仍沿旧 ProviderConfig 路径执行，不代表 NAS 已完整支持 Link 多路由。NAS 引导时的一次性密码、主机指纹与 known_hosts 行不进入持久化配置、响应或日志。
 
 ```mermaid
 flowchart TD
@@ -2036,7 +2040,7 @@ SSH 引导失败出口，输出错误但不泄露临时凭据。
 
 ### TEST_PROVIDER
 
-使用请求提交的有效 endpoint、timeout_seconds、credential_ref 与凭据；未提交的参数取已保存配置，并读取数据库凭据及 credential_ref 指向的环境凭据。秘密值不回显。测试参数与已保存配置不同时，返回明确标记的临时测试结果，不覆写存储的上次测试状态、消息与检查时刻；与已保存配置相同的测试将 verified 或 failed 状态、消息与检查时刻落库。NAS 测试只核验配置的逻辑根目录只读访问，不核验 SSH 地址或凭据；不支持连接测试的 Provider 调用会被拒绝，且设置页不显示测试按钮。设置页显示上次测试通过、失败或未测试，以及有记录时的测试时间；该状态是上次测试结果，不代表当前实时在线。自动化测试中的 Provider 服务以桩替代，不能据此认定真实外部服务实测成功。
+对选定 Provider Link 使用请求提交的有效配置；未提交项取已保存值，并读取 Link 中加密保存的凭据及 credential_ref 引用的环境凭据。秘密值不回显。临时参数与已保存配置不同时，返回临时测试结果且不覆写 Link 的上次状态；使用已保存配置时才更新该 Link 的测试状态。只有注册定义声明支持且源码存在内建测试适配器的 Provider 可测试，OpenSubtitles 不支持；NAS 的 ProviderLink 测试只核验既有配置的逻辑根目录只读访问，不核验 SSH 地址或凭据。NAS SSH 扫描与公钥 bootstrap 另走 `/provider-configs/nas/ssh-bootstrap*` ProviderConfig 兼容路径。测试状态是上次测试结果，不代表当前在线。测试与构建未验证真实外部服务连通性。
 
 - 输入参数：
   - `provider_config`：Jellyfin 配置；来源为 `API_KEY`
