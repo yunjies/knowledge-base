@@ -101,7 +101,7 @@
 
 ### 项目仓库改动的开发流程入口
 
-修改 `assets/projects/<项目>/<repository>/` 内的项目仓库前，按[需求流程模板的 DEVELOP 节点](assets/inbox/template.md#develop)执行分支策略；具体规则只在该开发节点承载，本文件不复制另一份。
+修改 `assets/projects/<项目>/<repository>/` 内的项目仓库前，按[需求流程模板的 DEVELOP 节点](assets/inbox/template.md#develop)执行分支策略；具体规则只在该开发节点承载，本文件不复制另一份。Git 提交、同步或 GitHub 操作另按[版本管理 skill](.agents/skills/version-management/SKILL.md)执行；GitHub 工具护栏见该 skill 的 reference。
 
 ### 需求收件箱的用法
 
