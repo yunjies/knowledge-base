@@ -14,8 +14,10 @@ whenToUse: 用户要求管理 Git 版本、检查工作区、创建或检查提�
 2. 先把目标路径解析到所属 Git 工作树根目录；工作区可能包含多个独立仓库，不能仅凭当前目录或最外层仓库推定目标。
 3. 在每个目标仓库分别读取当前分支、工作区与暂存区状态、相关差异及项目声明的版本管理策略；保留与本次需求无关的既有改动。
 4. 将变更限制在需求范围内；不要为制造干净状态而覆盖、丢弃、重置或移动用户的改动。
-5. 按[GitHub 工具护栏](references/github-constraints.md)发现并使用 GitHub 工具及认证 token；不假设工具、权限、目标仓库或远端状态。
-6. 提交、推送、合并、创建发布或删除远端对象是彼此独立的动作。只执行用户明确要求且当前策略允许的动作；执行后核验实际结果。
+5. 本地 Git 操作不触发任何托管平台的初始化；只有远端操作确实需要平台能力时，才确认目标平台与仓库，并读取该平台的工具和认证约束。
+6. 只有目标已确认为 GitHub 且本次操作需要 GitHub 工具、`gh` 或 GitHub Git 远端（SSH 或已认证的 HTTPS）时，才按[GitHub 工具护栏](references/github-constraints.md)发现并使用相应工具；不假设工具、权限、目标仓库或远端状态。
+7. 若远端操作依赖的平台或 host 在目标运行环境中尚未初始化或缺少可用认证，停止该远端操作，向用户说明具体平台、环境和缺口并询问是否初始化；只有用户明确要求初始化或在此后确认，才安装工具、登录或修改认证配置，单纯请求远端操作不构成初始化授权。
+8. 提交、推送、合并、创建发布或删除远端对象是彼此独立的动作。只执行用户明确要求且当前策略允许的动作；执行后核验实际结果。
 
 ## 通用基本逻辑
 
@@ -29,13 +31,19 @@ whenToUse: 用户要求管理 Git 版本、检查工作区、创建或检查提�
 
 ## GitHub CLI 部署初始化与 HTTPS 接入
 
-首次在某个运行环境使用 GitHub HTTPS 时，先检查 `gh --version`。未安装时按操作系统选择[官方安装说明](https://github.com/cli/cli/blob/trunk/docs/install_linux.md)中的受支持渠道；Debian 系统使用 GitHub CLI 官方 APT 源与签名 keyring，再运行 `sudo apt update && sudo apt install gh`，不得从不明来源下载二进制或跳过包签名校验。没有管理员权限时，可从[官方 release](https://github.com/cli/cli/releases)取与平台匹配的预编译包，在用户目录安装；安装前按该 release 发布的 SHA-256 校验值核验文件，并把版本化安装目录加入用户 PATH，不覆盖系统路径。
+本节仅在目标已确认为 GitHub 且本次操作需要 `gh` 或经认证的 GitHub HTTPS 访问时执行；调用本 skill 或进行纯本地 Git 操作不触发 GitHub 初始化。
 
-安装后先确认运行环境有可用的安全凭证存储，再运行 `gh auth login --hostname github.com --git-protocol https --web` 完成浏览器授权，并用 `gh auth status` 核实已认证账号。gh 在系统凭证存储不可用时可能退回明文文件保存；若发生回退，立即停止，不继续把该登录用于 Git 操作，并按 gh 官方说明处置凭证。此登录流程由 gh 保存自己的认证凭据，不会自动读取 DSH Credentials 插件中的 token；若部署策略要求 token 只能由 Credentials 插件管理，不要用 gh 另存一份，而应先提供由该插件安全供凭证的 Git credential helper。
+使用 GitHub CLI 时，按需参考 GitHub 官方 [`gh` agent skill](https://github.com/cli/cli/blob/trunk/skills/gh/SKILL.md)中的命令用法；它提供通用调用模式，本节的凭证存储、明文回退与 HTTPS 验证要求仍是本工作流的安全护栏，不得被通用示例覆盖。
 
-运行 `gh auth setup-git` 将 Git 配置为使用 gh 的 credential helper，并检查 `git config --show-origin --get-all credential.helper` 确认配置落在预期的 Git 配置层。不得使用 `credential.helper store` 保存认证信息，因为它会以明文写入磁盘。
+进入本节后，先在目标运行环境检查 `gh --version`；若已安装，再运行 `gh auth status` 核实目标 host。若 `gh` 未安装、目标 host 未认证或所需认证不可用，且本次请求未明确要求初始化，按执行入口步骤 7 停止并询问；若请求明确要求初始化，则仅按后续步骤处理已确认的 host 与运行环境。
 
-在目标仓库确认 HTTPS remote 后，先运行 `GIT_TERMINAL_PROMPT=0 git ls-remote <HTTPS_REMOTE> HEAD` 验证非交互式读取；若要确认写入权限，另按用户明确授权的目标做临时分支写入与删除，并复核分支确已删除。读取成功不能证明写入权限。
+用户明确要求或确认安装 GitHub CLI 后，若 `gh` 未安装，按操作系统选择[官方安装说明](https://github.com/cli/cli/blob/trunk/docs/install_linux.md)中的受支持渠道；Debian 系统使用 GitHub CLI 官方 APT 源与签名 keyring，再运行 `sudo apt update && sudo apt install gh`，不得从不明来源下载二进制或跳过包签名校验。没有管理员权限时，可从[官方 release](https://github.com/cli/cli/releases)取与平台匹配的预编译包，在用户目录安装；安装前按该 release 发布的 SHA-256 校验值核验文件，并把版本化安装目录加入用户 PATH，不覆盖系统路径。
+
+GitHub 凭证由 `gh` 的安全凭证存储管理，与 DSH Credentials 插件分开；不得通过 `credential_manage` 读取、写入或迁移 GitHub token。只有用户明确要求或确认初始化 GitHub 登录后，才检查目标运行环境的 Linux Secret Service 与 keyring 状态；若 Secret Service 不可达或 keyring 未解锁，停止，不发起 OAuth 登录，也不依赖明文回退。确认安全凭证存储可用后，运行 `gh auth login --hostname github.com --git-protocol https --web` 完成浏览器授权；仅安装 keyring 软件包或存在 D-Bus socket 不代表安全存储可用。随后用 `gh auth status` 核实目标账号及凭证来源为系统凭证存储，而非 `~/.config/gh/hosts.yml` 等明文文件。gh 在安全存储不可用时可能退回明文文件；若发生回退，立即停止，不继续用于 Git 操作，并运行 `gh auth logout --hostname github.com --user <账号>` 删除本地凭证。`gh auth logout` 不会撤销 GitHub 侧 OAuth 授权；远端撤销可能影响同一 GitHub CLI 应用的其他会话，需单独评估。
+
+仅当本次 GitHub HTTPS 操作需要 gh credential helper 且用户明确要求或确认修改 Git 配置时，运行 `gh auth setup-git`，并检查 `git config --show-origin --get-all credential.helper` 确认配置落在预期的 Git 配置层。不得使用 `credential.helper store` 保存认证信息，因为它会以明文写入磁盘。
+
+仅当本次操作需要验证已确认的 GitHub HTTPS remote 时，才在目标仓库运行 `GIT_TERMINAL_PROMPT=0 git ls-remote <HTTPS_REMOTE> HEAD` 验证非交互式读取；若要确认写入权限，另按用户明确授权的目标做临时分支写入与删除，并复核分支确已删除。读取成功不能证明写入权限。
 
 ## 策略优先级与范围
 
