@@ -1,0 +1,3 @@
+[submodule "assets/projects/dsh-settings-trusted-authority/dsh-settings-trusted-authority"]
+	path = assets/projects/dsh-settings-trusted-authority/dsh-settings-trusted-authority
+	url = https://github.com/yunjies/dsh-settings-trusted-authority.git
