@@ -132,6 +132,8 @@ flowchart TD
 
 运维人员通过 WebUI 或 CLI 进入系统。两者都不直接访问外部服务，全部业务执行落在应用服务边界上。
 
+WebUI 的 App 壳与数据加载集中在 `src/frontend/src/main.tsx`，各业务视图拆分为 `src/frontend/src/views/` 下的独立模块；入口以 hash 路由导航——URL 的 hash（形如 `#/overview`…`#/settings`）解析出当前视图并在导航时写回，未知 hash 回落到总览视图；`hashchange` 监听响应地址栏与前进后退产生的导航，首次渲染以当前 hash 初始化视图状态，故刷新停留在当前子界面。
+
 入口同时分出两条去向：一条进入 `CONFIG_LIBRARY` 及其后的业务主干，一条进入 `VERSION_REPORT`——后者只服务于入口处对当前版本的呈现，不参与业务主干。
 
 - 输入参数：无
@@ -1865,7 +1867,7 @@ flowchart TD
 
 ### START_PROVIDER
 
-Web 设置页只展示 Provider 管理入口，不展示 Agent、自动化或通用凭据面板。
+Web 设置页是「Provider 注册」界面：按注册目录逐 Provider 一个二级块，固定参数（类型标识、能力、凭据字段、Endpoint 是否必填、是否支持连接测试、插件来源）只读展示；凭据、Endpoint 等开放配置以该类型下的 Link 实例列表呈现，经 Link 编辑入口管理。不展示 Agent、自动化或通用凭据面板。
 
 - 输入参数：无
 - 输出参数：
