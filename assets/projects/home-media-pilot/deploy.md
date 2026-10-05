@@ -44,6 +44,7 @@ HOST_DATA_DIR=/<主机数据目录>/home-media-pilot
 HOST_MEDIA_DIR=/<主机媒体目录>
 HOST_DOWNLOADS_DIR=/<主机下载目录>
 HOST_RESTRICTED_DIR=/<主机受限目录>
+HOST_RESTRICTED_MOUNT_MODE=ro
 MEDIA_ROOT=/media
 DOWNLOADS_ROOT=/downloads
 LOGICAL_PATHS={"movies":"/media/movies","tv":"/media/tv","restricted":"/xoxo"}
@@ -56,7 +57,8 @@ LOGICAL_PATHS={"movies":"/media/movies","tv":"/media/tv","restricted":"/xoxo"}
 - `REGISTRY_OWNER`：发布工作流在运行期从仓库解析出的属主，也是 GHCR 镜像地址的属主段。工程仓库的实际属主是 `yunjies`，这里仍按 `<registry-owner>` 占位，因为该值随仓库别名与镜像地址而变，读者应从工作流的运行输出取当前值，不从文档抄。
 - `HOST_PORT`：宿主机上发布给 WebUI 的端口，容器内固定监听 8000。
 - `HOST_IP`：访问 WebUI 的实际地址（含端口）里的主机部分，即 `CORS_ORIGINS` 的取值来源。**键名用英文是硬约束**：环境变量名只接受字母、数字与下划线，写成中文的键不会被 Compose 读到，`${...:-默认值}` 会静默退回默认值 `localhost`，于是从别的机器访问时页面能打开但接口被拦——那正是这一项要防的失败。不设该变量时应用只允许 `http://localhost:5173` 与 `http://127.0.0.1:5173`。
-- `HOST_DATA_DIR`、`HOST_MEDIA_DIR`、`HOST_DOWNLOADS_DIR`、`HOST_RESTRICTED_DIR`：四项主机侧目录，分别挂到容器内的 `/app/data`、`/media`、`/downloads`、`/xoxo`。前一项可写且必须持久化，后三项以只读挂入。
+- `HOST_DATA_DIR`、`HOST_MEDIA_DIR`、`HOST_DOWNLOADS_DIR`、`HOST_RESTRICTED_DIR`：四项主机侧目录，分别挂到容器内的 `/app/data`、`/media`、`/downloads`、`/xoxo`。数据目录可写且必须持久化；`/media` 为配置媒体库物理根的读写挂载；`/downloads` 保持只读。`/xoxo` 挂载由 `HOST_RESTRICTED_MOUNT_MODE` 控制，默认 `ro`；只有 `/xoxo` 正作为启用媒体库根且 Jellyfin sidecar 必须导出到其中时，才显式设为 `rw`，否则保持 `ro` 或删除该卷挂载。修改挂载模式须重新部署容器；这只描述配置要求，不表示任何现有主机已变更。
+- `HOST_RESTRICTED_MOUNT_MODE`：`/xoxo` 卷的 Compose 挂载模式，只设为 `ro` 或 `rw`；未设置时默认为 `ro`。仅在 `/xoxo` 正配置为启用媒体库物理根且需要 sidecar 输出时设为 `rw`，不满足条件时保持 `ro` 或移除 `/xoxo` 卷。
 - `MEDIA_ROOT`、`DOWNLOADS_ROOT`、`LOGICAL_PATHS`：容器内的取值，`LOGICAL_PATHS` 是逻辑根名到容器内物理路径的映射，取值须是合法 JSON 对象，逻辑根解析出的物理路径须真实存在且为目录（解析规则见 `src/packages/infrastructure/library/roots.py`）。`MEDIA_ROOT` 与 `DOWNLOADS_ROOT` 的内容对任何主机都一样，不写进 `.env` 时取 YAML 里 `${变量:-默认值}` 的默认值，部署照样成立；`LOGICAL_PATHS` 没有默认值，必须在 `.env` 里给，否则 Compose 在插值处报错并停下。
 
 `.env.example` 与 `.env` 是两件不同用途的东西：前者是工程内的键名清单，只列非机密的开发期取值；后者是本机私有设置，不入版本库，也不得含真实凭据或真实端点（约定见 `CONTRIBUTING.md`）。
@@ -90,7 +92,7 @@ services:
     environment:
       DATABASE_URL: sqlite:////app/data/home_media_pilot.db
       CORS_ORIGINS: http://${HOST_IP:-localhost}:${HOST_PORT:-8000}
-      MEDIA_READ_ONLY: "true"
+      MEDIA_READ_ONLY: "false"
       DOWNLOADS_READ_ONLY: "true"
       LOGICAL_PATHS: ${LOGICAL_PATHS}
       MEDIA_ROOT: ${MEDIA_ROOT:-/media}
@@ -99,9 +101,9 @@ services:
       - "${HOST_PORT:-8000}:8000"
     volumes:
       - ${HOST_DATA_DIR:-./data}:/app/data
-      - ${HOST_MEDIA_DIR:-./media}:/media:ro
+      - ${HOST_MEDIA_DIR:-./media}:/media:rw
       - ${HOST_DOWNLOADS_DIR:-./downloads}:/downloads:ro
-      - ${HOST_RESTRICTED_DIR:-./xoxo}:/xoxo:ro
+      - ${HOST_RESTRICTED_DIR:-./xoxo}:/xoxo:${HOST_RESTRICTED_MOUNT_MODE:-ro}
     networks:
       - scraping_server_default
     healthcheck:
@@ -153,6 +155,14 @@ Unraid 上也可以用 Compose Manager 界面的 Pull 与 Up，效果相同。
 
 确认这次升级是否真的换上了新代码，看 `curl http://<部署机IP>:<宿主端口>/version`：版本号取自镜像内 `/app/pyproject.toml` 的 `project.version`，**在运行时解析**，因此它反映的是这个镜像里声明的版本，不是本次操作的时间。同一版本号的连续两次发布分辨不出差别时（版本未 bump），改看镜像 ID 而非版本号：`docker image inspect ghcr.io/<registry-owner>/home-media-pilot:main --format '{{.Id}}'` 在 `pull` 前后是否变化。WebUI 左下角（左侧栏底部）显示的就是这个版本，取回失败时该处不渲染。
 
+## 配置 TMDb 元数据 Provider
+
+TMDb 适配器提供电影与 TV 搜索及详情端点；这是适配器的 API 能力，不是 HMP 对媒体库的 Provider 职能分配。先在部署环境为容器提供 TMDb Read Access Token：在同目录 `.env` 中设置 `TMDB_READ_ACCESS_TOKEN`，不要把令牌写入知识库、Compose 正文或提交到版本库。可按 [TMDb 应用认证说明](https://developer.themoviedb.org/docs/authentication-application) 创建与管理 token；认证能力与可用性详见 [TMDb FAQ](https://developer.themoviedb.org/docs/faq)，该服务未在此承诺 SLA。
+
+在 WebUI 的「设置与管理台」打开 Provider Link 管理区，选择 TMDb 并创建 Link；保持官方 API Endpoint，启用 Link，并在凭据引用提示中填写 `env:TMDB_READ_ACCESS_TOKEN` 后保存。应用只接受官方 HTTPS TMDb v3 API 主机；Link 从进程环境读取该引用对应的 token，凭据不会作为 UI 响应回显。然后编辑希望使用此 Link 的特定媒体库，在媒体库编辑器中选择刚创建的 TMDb Link 并保存。每个媒体库保存的 `metadata_link_id`/ProviderLink 是用户配置的 Provider 选择；HMP 不依据媒体库名称或资源媒体类型自动分配、交换或回退到其他 Provider。TMDb 的 movie/TV 类型搜索分别调用 `/search/movie` 与 `/search/tv`，series/episode 映射为 TV；未指定类型的搜索使用有界 `/search/multi`，只保留 movie/TV 且有海报的结果。调用 TMDb 详情时须显式提供 `media_type`，数字 ID 本身无法区分电影与 TV。其他适配器仍只支持各自实际实现的 API 域，端点能力不定义 HMP 路由政策。可在 Link 行点击「测试」观察连接状态；只有目标实例显示本次验证成功，才可据此确认该实例连接测试通过。真实连接状态由操作者在目标实例验证。
+
+持久保留 TMDb 元数据或海报须先取得覆盖持久留存用途的适用书面授权。官方 [TMDb API Terms](https://www.themoviedb.org/api-terms-of-use) 规定标准开发者 API 使用为非商业用途、缓存 TMDb 内容的期限最长六个月并要求署名。Settings Credits 显示的署名原文为：`This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.` 官方本地 TMDb logo 随前端提供。HMP 不核验该授权，也不执行缓存期限或到期删除；运营方负责确认书面授权覆盖持久留存并自行管理期限。
+
 ## 使用
 
 部署完成后，业务操作都在 HTTP 接口与 WebUI 上，**配置权威在数据库而不在 Compose 文件**——媒体库、逻辑根绑定、元数据与字幕 Provider 的端点与启用状态都在应用数据库里，改它们不必重建容器。这正是上面 Compose 注释里那句话的意思：环境段里只该放部署不变量。
@@ -161,18 +171,30 @@ Unraid 上也可以用 Compose Manager 界面的 Pull 与 Up，效果相同。
 
 1. 在 WebUI 里建媒体库：给名称、绑一个或多个逻辑根、指定元数据与字幕 Provider。可绑的逻辑根由部署环境的 `LOGICAL_PATHS` 与卷映射决定，未在映射里的逻辑根会被拒绝。
 2. 对媒体库发起扫描，建立索引并落一份扫描报告。
-3. 查资源清单，从清单里选一个资源发起元数据匹配，在候选里选定一个——选定只写应用数据库，**不写媒体目录、不重命名文件、不下载图片**。
+3. 查资源清单，从清单里选一个资源发起元数据匹配，并显式选择候选列表内的候选——预览与批量刮削只创建候选会话，不写媒体目录；选择后仅在启用且配置物理根的媒体库路径创建 NFO 与海报 sidecar。电影使用 `movie.nfo`，剧集使用 `tvshow.nfo`；NFO 包含 Provider ID 与 `uniqueid`。TMDb 电影与 TV/series 导出均以 `<tmdbid>` 写入所选 TMDb 候选的规范数字 ID，并以 `<uniqueid type="tmdb">` 写入同一 ID；其他 Provider 继续使用各自的 Provider ID 元素及对应 `uniqueid` 类型。既有 NFO、poster 文件或 `folder.jpg` 会导致拒绝写入，不覆盖。写入前执行根路径、目标位置及符号链接检查，事务回滚时清理本事务创建的 sidecar；视频媒体字节不变。格式参照 [Jellyfin NFO 文档](https://jellyfin.org/docs/general/server/metadata/nfo/)。
 4. 字幕搜索只列出候选，下载不在该流程内。
 
 接口的权威定义与命令面在 `src/apps/api/` 与 `src/apps/cli/`。容器内另有 CLI 入口可用（`media-pilot`，入口声明见 `pyproject.toml` 的 `project.scripts`）：`docker exec home-media-pilot /app/.venv/bin/media-pilot --help` 列出它当前提供的命令，各命令的取值以该输出为准。
 
-**写能力的当前边界**：下载提交、文件写入、移动与删除、媒体库刷新均需各自的能力开关与审批记录，未接线前不生效；获取入口在 WebUI 上以阻断响应返回。判断某条写能力在本次部署里是否可用，看对应接口的实际响应，而不是看它有没有出现在界面上。
+**写能力边界**：文件写入仅发生于用户显式选定元数据候选后，在启用且已配置物理根的媒体库路径下创建 NFO 与海报 sidecar；既有目标不覆盖。若 `/xoxo` 用作该输出根，Compose 挂载须配置为可写；不需要输出时保持只读或移除该卷。下载和其他通用文件写入、移动、删除及媒体变更没有可用的通用 mutation 接口，不因卷以读写方式挂入而启用。**重要残余风险**：每个 `:rw` bind mount 都授予容器进程对该挂载的整个主机目录树的 OS 层写权限；Pilot 的 sidecar 范围保护是应用层限制，不是文件名级隔离，不能阻止有漏洞或越过应用代码的进程写入挂载树中的其他文件。故 `/media:rw` 和按需启用的 `/xoxo:rw` 都有此整棵树权限；下载仍为 `/downloads:ro`。
+
+## 本地测试与未验证的现场面
+
+在 HMP 仓库克隆根按 [`tests/README.md`](home-media-pilot/tests/README.md) 执行 `UV_CACHE_DIR=.uv-cache uv run pytest -q`；全绿且退出码为 0 即通过。验证前端时在 `src/frontend` 执行 `npm run build`，TypeScript 检查及 Vite 构建均须成功且退出码为 0。若需复核本功能的离线覆盖，可运行：
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run pytest -q tests/src/packages/providers/metadata/test_tmdb.py tests/src/frontend/test_tmdb_credits.py tests/src/packages/application/test_metadata_exports.py tests/src/packages/frameworks/test_provider_stack_operations.py tests/src/packages/providers/test_provider_connection_status.py tests/src/apps/api/test_provider_api.py
+```
+
+这些 Provider/API 用例使用 mock；它们不证明真实服务连接、真实资源匹配或部署环境文件写入。
+
+未验证面包括目标部署实例的 TMDb 连接测试、真实资源扫描或刮削、sidecar 写入以及 Jellyfin 导入。未来现场核验须由获准的运营方按目标实例单独执行并记录结果；上述本地证据不可替代现场结果，也不构成部署完成声明。
 
 ## 数据持久化
 
 `DATABASE_URL` 指向 `/app/data/home_media_pilot.db`，必须把该路径挂到主机目录（上面的 `volumes` 首项即是，其主机侧取值来自 `.env` 的 `HOST_DATA_DIR`）。不挂则 sqlite 落在容器内，容器重建即清空——`up -d` 一次就把配置与扫描索引一起丢掉。
 
-媒体、下载与受限目录均以只读挂入，Pilot 不写它们，因此这三项的备份策略与 Pilot 无关。
+`/downloads` 保持只读挂入；配置媒体库物理根的 `/media` 保持读写挂入。`/xoxo` 默认只读，只有它正作为启用媒体库根且 Jellyfin sidecar 必须导出到其中时，才将 `.env` 中的 `HOST_RESTRICTED_MOUNT_MODE` 设为 `rw`；否则保留 `ro` 或删除 `/xoxo` 卷。检查实际 Compose 插值且尚未部署时，可在 Compose 文件所在目录运行 `docker compose config`，确认渲染的 `pilot.volumes` 中 `/xoxo` 行为 `:ro`，或仅在上述授权用途下为 `:rw`，并确认 `/media:rw`、`/downloads:ro` 与 `MEDIA_READ_ONLY=false`、`DOWNLOADS_READ_ONLY=true`；不要据此声称已改变运行中的容器。每个 RW bind mount 都给予容器进程对整棵主机挂载树的 OS 写权限，应用的 sidecar 限制不是文件名级隔离。挂载模式修改后须重新部署容器；本文档不表示 live host 已改变。此部署说明不证明任何实例已更新；当前运行实例的 sidecar 写入、资源级刮削与 Jellyfin 导入均未在此验证。
 
 ## 故障处置
 

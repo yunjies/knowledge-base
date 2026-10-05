@@ -250,7 +250,7 @@ ProviderRegistry 合并内建定义与 `home_media_pilot.providers` entry-point 
 
 Link 可创建、更新、删除；凭据写入加密存储，响应不回传秘密值，`credential_ref` 可引用环境变量。连接测试仅对既声明支持且有内建测试适配器的类型开放；测试临时参数不改变已保存结果，使用已保存配置的测试才更新 Link 状态。Jellyfin、M-Team、qBittorrent、TVMaze、MetaTube 与 NAS 有连接测试适配器；OpenSubtitles 不支持连接测试。`POST /provider-links/{id}/test` 会针对指定 Link 测试连接；NAS 在此路由测试的是既有配置所对应逻辑根目录的只读访问，不是 SSH 连通性。
 
-元数据与字幕检索按媒体库所绑定的 Link ID 选择路由实例。当前内建适配器分别来自 `src/packages/frameworks/provider_stack.py` 中的元数据与字幕工厂映射；资源路由入口见 `src/packages/application/provider_routing.py` 与 `src/packages/application/metadata_matching.py`。Jellyfin、M-Team 与 qBittorrent 是全局服务构建器按同类型启用 Link 中最小 priority 选择；停用 Link 不参与选择。NAS 的 SSH 扫描与公钥 bootstrap 仍走 `/provider-configs/nas/ssh-bootstrap*` 兼容路径；bootstrap 完成后更新 ProviderConfig，并由兼容同步更新“默认链接”。ProviderLink 的连接测试则走 `/provider-links/{id}/test`，其 NAS 测试语义为既有配置的逻辑根目录只读访问；不得将其泛称为 NAS 测试都走兼容路由。Provider 定义与测试支持边界见 `src/packages/frameworks/providers.py`，Link CRUD 与绑定校验见 `src/packages/application/libraries.py`，迁移见 `src/migrations/versions/0012_provider_links.py`。从仓库根运行 `UV_CACHE_DIR=.uv-cache uv run pytest -q` 可复算后端断言；前端检查使用 `tsc -b && vite build`。这些检查不证明真实外部服务连通性。
+元数据与字幕检索按媒体库所绑定的 Link ID 选择路由实例。当前内建元数据工厂映射包括 TVMaze、MetaTube 与 TMDb，字幕工厂映射包括 OpenSubtitles；精确映射与默认值见 `src/packages/frameworks/provider_stack.py`。资源路由入口见 `src/packages/application/provider_routing.py` 与 `src/packages/application/metadata_matching.py`。Jellyfin、M-Team 与 qBittorrent 是全局服务构建器按同类型启用 Link 中最小 priority 选择；停用 Link 不参与选择。NAS 的 SSH 扫描与公钥 bootstrap 仍走 `/provider-configs/nas/ssh-bootstrap*` 兼容路径；bootstrap 完成后更新 ProviderConfig，并由兼容同步更新“默认链接”。ProviderLink 的连接测试则走 `/provider-links/{id}/test`，其 NAS 测试语义为既有配置的逻辑根目录只读访问；不得将其泛称为 NAS 测试都走兼容路由。Provider 定义与测试支持边界见 `src/packages/frameworks/providers.py`，Link CRUD 与绑定校验见 `src/packages/application/libraries.py`，迁移见 `src/migrations/versions/0012_provider_links.py`。从仓库根运行 `UV_CACHE_DIR=.uv-cache uv run pytest -q` 可复算后端断言；前端检查使用 `tsc -b && vite build`。这些检查不证明真实外部服务连通性。
 
 ```mermaid
 flowchart TD
@@ -595,11 +595,19 @@ flowchart TD
 
 由一个已索引资源生成元数据检索请求，向该资源所属媒体库绑定的元数据 Provider 搜索候选，并把候选集持久化为一次匹配会话。
 
-流程以资源身份为起点：从资源取标题、媒体类型、年份与季集构造检索请求，剧集类型向上归为剧集检索。逻辑根路径经 Provider 路由解析到唯一媒体库，再以该库的 metadata_link_id 选择 Link；媒体库绑定校验 Provider 类型与 Link 类型一致。应用层调用元数据搜索时使用绑定 Link 的 endpoint 与凭据配置。路由在构造时拒绝同一路径归属两个媒体库。源码入口见 `src/packages/application/provider_routing.py`、`src/packages/application/metadata_matching.py` 与 `src/packages/frameworks/provider_stack.py`。
+流程以资源身份为起点：从资源取标题、媒体类型、年份与季集构造检索请求，episode 按 series 搜索。逻辑根路径经 Provider 路由解析到唯一媒体库，再以该库已保存的 `metadata_link_id`/ProviderLink 选择适配器；该 Link 是用户为该媒体库配置的选择，HMP 不按媒体库名称或资源媒体类型分配或切换 Provider，也不自动回退至另一 Provider。Provider 按显式 Link ID 与 Provider 类型解析，应用层调用使用绑定 Link 的 endpoint 与凭据。路由构造时拒绝同一路径归属两个媒体库。源码入口见 `src/packages/application/provider_routing.py`、`src/packages/application/metadata_matching.py` 与 `src/packages/frameworks/provider_stack.py`。
+
+适配器的端点能力与 HMP 的媒体库路由策略是两件事：当前 TVMaze 适配器调用 show/series 端点并接受 series/episode 搜索；MetaTube 当前调用 movie API；TMDb 支持 movie 与 TV 搜索和详情。TMDb 按显式媒体类型选择 `/search/movie` 或 `/search/tv`，series/episode 映射为 TV；未指定类型时用有界 `/search/multi`，并过滤非 movie/TV 与无海报结果。TMDb 详情必须显式给出 `media_type`，否则数字 ID 无法区分电影与 TV；详情校验返回 ID 并映射 genres。TMDb 候选保留 Provider 数字 ID，供 Jellyfin NFO 使用。这些能力是适配器事实，不构成 Provider 职能分配：每个媒体库以用户保存的 `metadata_link_id`/ProviderLink 选择 Provider，HMP 不按库名或资源媒体类型分配、交换或回退 Provider。TVMaze 与 MetaTube 的错误类型请求分别在不发请求时返回空搜索结果或在显式详情时抛出 typed business error。实现细节由相应 Provider 源码与测试承载。
+
+**【事实】**每个媒体库以已保存的 `metadata_link_id`/ProviderLink 表示用户配置的 Provider 选择；TMDb 提供 movie 与 TV 搜索/详情端点，TMDb 数字 ID 单独不足以确定详情类型。
+
+**【反题】**若数字 ID 被当作足以定位 TMDb 详情的键，电影与 TV 记录可能被混淆；若无类型搜索直接混合结果，非电影/TV 或无海报结果可能进入候选。可观察的失败条件是：TMDb 详情缺少 `media_type` 仍发起请求，或多类型搜索返回非 movie/TV、无海报行，或有界分页超出请求预算；TVMaze/MetaTube 对错误媒体类型发出网络请求也违反适配器边界。
+
+**【裁决】**媒体库 Link 负责唯一 Provider 选择，适配器能力不参与 HMP 路由；TMDb 详情要求显式 `media_type`，有类型搜索使用对应端点，无类型搜索仅用有界 `/search/multi` 并过滤非 movie/TV 与无海报项。候选保留规范数字 Provider ID，电影与 TV/series Jellyfin NFO 均用 `<tmdbid>` 和 `<uniqueid type="tmdb">` 输出该 ID。调用方省略 TMDb 详情 `media_type` 的兼容性代价是必须补充媒体类型，旧式无类型详情调用会被拒绝；这是消除歧义的契约。
 
 Provider 调用带有限次重试，仅对超时与不可用两类瞬时失败重试，业务错误、限流与认证失败立即上报。
 
-会话以打开状态落库并保存检索请求与全部候选。**刮削只创建可复核候选，绝不代替用户选定**：批量刮削逐个资源生成会话，有候选计为已刮削，无候选计为未匹配，抛错的资源回滚后计为失败并继续处理其余资源，不中断整批。
+会话以打开状态落库并保存检索请求与全部候选。批量刮削逐个资源生成会话，有候选计为已刮削，无候选计为未匹配，抛错的资源回滚后计为失败并继续处理其余资源，不中断整批；批量刮削不选择候选，也不写 sidecar。
 
 ```mermaid
 flowchart TD
@@ -620,7 +628,7 @@ flowchart TD
   - `library_id`：标识符；来源为工程部署位置
   - `media_id`：标识符；来源为工程部署位置
 - 输出参数：
-  - `match_session`：状态为已选择、含选定候选的会话；去向为 `METADATA_DONE`
+  - `match_session`：状态为打开、含检索请求与候选列表的匹配会话；去向为 `MATCH_DONE`
   - `lookup_error`：装载错误；去向为 `MATCH_ERROR`
   - `routing_error`：路由错误；去向为 `MATCH_ERROR`
   - `provider_error`：Provider 错误；去向为 `MATCH_ERROR`
@@ -647,7 +655,7 @@ flowchart TD
 
 ### RESOLVE_PROVIDER
 
-从资源所属媒体库的 metadata_link_id 取得绑定 Link，再以其 Provider 类型构造路由实例；Link 不存在、类型不匹配或停用时路由失败。资源归属冲突在路由构造时拒绝。当前元数据工厂映射覆盖 TVMaze 与 MetaTube；扩展 entry-point 的注册发现本身不表示有对应 adapter builder。
+从资源所属媒体库已保存的 `metadata_link_id` 取得绑定 ProviderLink，再以 Link ID 和 Provider 类型构造路由实例；该 Link 是用户在该媒体库中配置的 Provider 选择。HMP 不根据媒体库名称或资源媒体类型分配、交换或自动回退 Provider；绑定适配器若不能处理该类型，按其接口行为返回结果或错误，不自动改用其他 Link。Link 不存在、类型不匹配或停用时路由失败。资源归属冲突在路由构造时拒绝。内建元数据工厂映射覆盖 TVMaze、MetaTube 与 TMDb；TMDb 支持电影与 TV（series/episode 按 TV 处理），扩展 entry-point 的注册发现本身不表示有对应 adapter builder。
 
 - 输入参数：
   - `resource_identity`：资源标识，提供逻辑根路径；来源为 `LOAD_RESOURCE`
@@ -720,9 +728,11 @@ flowchart TD
 
 ## SELECT_CANDIDATE
 
-由用户在打开的会话中选定一个候选，把匹配状态与外部标识写入应用数据库。
+Jellyfin sidecar 格式见 [Jellyfin NFO 文档](https://jellyfin.org/docs/general/server/metadata/nfo/)。持久保留 TMDb 元数据与海报须有适用的单独书面授权：标准 TMDb API 为非商业用途，缓存期限最长六个月；HMP 不核验授权，也不执行到期删除或过期处理。详见 [TMDb API Terms](https://www.themoviedb.org/api-terms-of-use)。
 
-选择要求会话处于打开状态且候选下标在范围内。选定后会话转为已选择，资源标记为已匹配，并记录 Provider 标识、外部标识与完整候选内容。**写入只落在应用数据库，不写媒体目录、不写图片、不重命名文件。**
+用户必须在打开的会话中显式选择一个下标位于候选列表范围内的候选。选择后服务更新会话、媒体实体与外部标识的数据库记录，并仅向启用且配置了物理根的媒体库根目录写 Jellyfin NFO 与海报 sidecar；电影使用 `movie.nfo`，剧集使用 `tvshow.nfo`，NFO 写入 Provider ID 与 `uniqueid` 映射。TMDb 电影与 TV/series NFO 均使用 `<tmdbid>` 元素及 `<uniqueid type="tmdb">`，两者写入所选 TMDb 候选的同一规范数字 TMDb ID。其他 Provider 仍使用其 Provider 专属 ID 元素及对应 `uniqueid` 类型。媒体视频与其它媒体字节不修改。
+
+写入前校验资源归属、逻辑路径穿越、物理根解析、文件路径与符号链接边界，并拒绝含糊或越出配置根的输出位置。任一目标 NFO、poster 文件或 `folder.jpg` 已存在时拒绝覆盖。副作用写入失败会清理本次已创建文件；数据库事务回滚也只移除本事务创建且 inode/device 仍匹配的 sidecar。
 
 ```mermaid
 flowchart TD
@@ -730,7 +740,7 @@ flowchart TD
     SESSION_OPEN -- 否 --> SELECT_ERROR(["拒绝：会话不可选择"])
     SESSION_OPEN -- 是 --> INDEX_VALID{"候选下标在范围内？"}
     INDEX_VALID -- 否 --> SELECT_ERROR
-    INDEX_VALID -- 是 --> PERSIST_SELECTION["写入选定候选与外部标识"]
+    INDEX_VALID -- 是 --> PERSIST_SELECTION["写入数据库并创建 sidecar"]
     PERSIST_SELECTION --> SELECT_DONE(["资源元数据已定稿"])
     SELECT_ERROR --> SELECT_DONE
 ```
@@ -775,7 +785,7 @@ flowchart TD
 
 ### PERSIST_SELECTION
 
-把选定候选、Provider 标识与外部标识写入会话与媒体实体，并把媒体状态置为已匹配。
+把选定候选、Provider 标识与外部标识写入会话与媒体实体，并把媒体状态置为已匹配；随后按启用库中已配置物理根输出 Jellyfin sidecar。输出目录及每个目标均须通过根路径与符号链接检查；NFO 或 poster 目标已存在即失败，不覆盖。写入期间异常时清理由本次创建且仍属本次的文件，数据库回滚时同样清理本事务创建的 sidecar。电影 NFO 为 `movie.nfo`，剧集 NFO 为 `tvshow.nfo`；两类均写 Provider 专属 ID 标签和 `uniqueid`。TMDb 电影与 TV/series 的标签均为 `<tmdbid>`，其值为选定 TMDb 候选的规范数字 ID；`<uniqueid type="tmdb">` 的值与之相同。其他 Provider 仍按其 Provider ID 生成专属标签，并以对应 Provider 类型写入 `uniqueid`。
 
 - 输入参数：
   - `selected_candidate`：选定的候选；来源为 `INDEX_VALID`
@@ -2151,3 +2161,4 @@ flowchart TD
 - **前端包声明里的版本未收敛**。`src/frontend/package.json` 的 `version` 字段是 npm 私有包字段，当前不参与版本取回与呈现；它与工程声明的 `project.version` 之间没有自动化关联，改动工程声明时须人工同步。取回路径为该文件的 `version` 字段。
 - **取回发生在进程启动时**。`APP_VERSION` 在模块级求值一次，此后请求只回送该值；工程声明改动后已在运行的进程仍报旧版本，须重启进程才能取回新值。
 - **浏览器交互的完整范围**仍未验证。左下角版本取回与绘制已有 `tests/e2e/capture_webui.cjs` 的活体证据，但该轨不覆盖首屏其它交互、真实反向代理路径或容器内浏览器运行。
+- **TMDb 连接与现场导出链路**仍未验证：未对真实 TMDb 发起连接测试或资源搜索，未在真实媒体库写入 sidecar，也未检查 Jellyfin 导入结果。离线 mock 测试不能替代这些现场证据。
