@@ -33,6 +33,17 @@ REQUIRED_KEYS = ("target", "output", "prompt")
 # template as a defective demand rather than as a template.
 NON_DEMAND_FILES = {"README.md", "template.md"}
 
+# Demands that entered the inbox before the clarification-chapter rule existed.
+# They are grandfathered: the rule applies to demands created after its
+# introduction, not retroactively to ones already in flight. Removing an entry
+# from this set requires backfilling that demand's 「需求澄清」 chapter first.
+GRANDFATHERED_NO_CLARIFICATION = {
+    "req.dsh-credentials.target-info.20261004-172634.md",
+    "req.home-media-pilot.jellyfin-metadata-exports.20261003-090738.md",
+    "req.home-media-pilot.media-library-waterfall.20261003-055635.md",
+    "req.home-media-pilot.provider-registry-ui.20261005-114222.md",
+}
+
 # A value consisting solely of one or more `<...>` placeholders — the shape a
 # copy leaves behind when the template was never filled in.
 PLACEHOLDER_ONLY = re.compile(r"^(?:<[^<>]*>\s*)+$")
@@ -209,6 +220,68 @@ def test_prompt_entries_are_present_and_never_rewritten(repo) -> None:
     assert offenders == [], (
         "prompt is the demand's provenance: it must carry at least one substantive entry, and a "
         f"revision appends rather than rewrites: {offenders}"
+    )
+
+
+def clarification_chapter(text: str) -> str | None:
+    """The body of the 「需求澄清」 h2 chapter, or None if absent.
+
+    The chapter is the inbox's declared relaxation of P-01/P-10, sitting
+    between the purpose paragraph and the first main-flow h2. It carries the
+    clarification record, acceptance anchors, and scope boundary. The parser
+    reads the chapter body up to the next h2, not the document's tail.
+    """
+    lines = text.split("\n")
+    start = next((i for i, line in enumerate(lines) if line.strip() == "## 需求澄清"), None)
+    if start is None:
+        return None
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    return "\n".join(lines[start + 1 : end])
+
+
+def clarification_has_required_sections(chapter: str) -> list[str]:
+    """Report which of the three required subsections are missing.
+
+    Required: 澄清记录, 验收锚点, 范围边界. Each must appear as an h3 heading.
+    """
+    required = ("澄清记录", "验收锚点", "范围边界")
+    present = set()
+    for line in chapter.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("### "):
+            title = stripped[4:].strip()
+            for name in required:
+                if title.startswith(name):
+                    present.add(name)
+    return [name for name in required if name not in present]
+
+
+def test_every_demand_carries_a_clarification_chapter(repo) -> None:
+    """Each demand must carry a 「需求澄清」 chapter with the three subsections.
+
+    The chapter is where the demand's semantics are fixed before execution:
+    what was asked, what was decided, what evidence proves it, and what is out
+    of scope. Without it, the four independent subagents have no shared scale
+    to judge against, and the ACCEPT stage's enumeration becomes unreviewable.
+    """
+    offenders = []
+    for path in inbox_documents():
+        if path.name in GRANDFATHERED_NO_CLARIFICATION:
+            continue
+        text = path.read_text(encoding="utf-8")
+        chapter = clarification_chapter(text)
+        if chapter is None:
+            offenders.append(f"{paths.relative(path)}: no 「需求澄清」 chapter")
+            continue
+        missing = clarification_has_required_sections(chapter)
+        if missing:
+            offenders.append(
+                f"{paths.relative(path)}: 「需求澄清」 missing subsection(s) {missing}"
+            )
+    assert offenders == [], (
+        "every demand must carry a 「需求澄清」 chapter with 澄清记录, 验收锚点, and 范围边界 — "
+        "the chapter is the shared scale the independent subagents judge against: "
+        f"{offenders}"
     )
 
 

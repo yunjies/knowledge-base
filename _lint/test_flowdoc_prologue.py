@@ -60,7 +60,12 @@ def _opens_legally(path, lines: list[str]) -> str | None:
             return f"{index + 1} opens with {first[:40]!r}"
         return None
 
-    # The inbox form: a `yaml` fence, then the paragraph immediately after it.
+    # The inbox form: a `yaml` fence, then the paragraph, then an optional
+    # 「需求澄清」 h2 chapter, then the first main-flow h2. The clarification
+    # chapter is the inbox directory's second declared relaxation of P-01/P-10,
+    # stated in `assets/inbox/README.md`; it carries the clarification record,
+    # acceptance anchors, and scope boundary that the four independent subagents
+    # need before they read the graph.
     if not first.lstrip().startswith("```yaml"):
         return f"{index + 1} does not open with the provenance block, but with {first[:40]!r}"
     closing = next(
@@ -76,6 +81,21 @@ def _opens_legally(path, lines: list[str]) -> str | None:
         return "the provenance block is not followed by the purpose paragraph"
     if not _is_paragraph(lines[after]):
         return f"{after + 1} follows the provenance block with {lines[after][:40]!r}"
+    # After the paragraph, the next h2 may be 「需求澄清」; skip it if present.
+    # The paragraph itself may span multiple physical lines (D-21 says each
+    # paragraph is one physical line, but the paragraph may be followed by
+    # other blocks like lists or emphasis lines before the first h2 — those
+    # are legal content blocks, not violations of P-10's "at most one block"
+    # because P-10 counts content blocks, not lines. The relaxation is only
+    # about the chapter position, not about what the paragraph may contain.
+    heads = [i for i, line in enumerate(lines) if line.startswith("## ")]
+    if not heads:
+        return "no h2 chapter found"
+    first_h2 = heads[0]
+    if lines[first_h2].strip() == "## 需求澄清":
+        if len(heads) < 2:
+            return "「需求澄清」chapter present but no following h2 for the main flow"
+        first_h2 = heads[1]
     return None
 
 
@@ -118,7 +138,14 @@ def test_the_opening_rule_tells_the_two_forms_apart() -> None:
         "plain": ("assets/projects/x/feature-flow.md", ["# T", "", "目标段落。"]),
         "inbox block then paragraph": (
             "assets/inbox/req.x-20260101-000000.md",
-            ["# T", "", "```yaml", "target: x", "```", "", "目标段落。"],
+            ["# T", "", "```yaml", "target: x", "```", "", "目标段落。", "", "## 主流程"],
+        ),
+        "inbox block + paragraph + clarification + main h2": (
+            "assets/inbox/req.x-20260101-000000.md",
+            [
+                "# T", "", "```yaml", "target: x", "```", "", "目标段落。", "",
+                "## 需求澄清", "", "内容", "", "## 主流程", "", "```mermaid", "flowchart TB", "```",
+            ],
         ),
     }
     rejected = {
@@ -135,6 +162,10 @@ def test_the_opening_rule_tells_the_two_forms_apart() -> None:
         "inbox block unclosed": (
             "assets/inbox/req.x-20260101-000000.md",
             ["# T", "", "```yaml", "target: x"],
+        ),
+        "inbox block + paragraph + clarification but no main h2": (
+            "assets/inbox/req.x-20260101-000000.md",
+            ["# T", "", "```yaml", "target: x", "```", "", "目标段落。", "", "## 需求澄清", "", "内容"],
         ),
     }
 
@@ -175,6 +206,10 @@ def test_the_main_graph_chapter_holds_only_the_graph(repo) -> None:
 
     An entry node stays in the main graph, but a sub-flow's internal steps do
     not; their presence is what makes a main graph unreadable on its own.
+
+    For inbox documents the first `##` may be 「需求澄清」 (the directory's
+    second declared relaxation); the graph-only rule then applies to the next
+    `##`, which is the main flow chapter.
     """
     offenders = []
     for path in paths.flow_documents():
@@ -184,7 +219,14 @@ def test_the_main_graph_chapter_holds_only_the_graph(repo) -> None:
             offenders.append(f"{paths.relative(path)}: carries a graph but no h2 chapter")
             continue
         start = heads[0]
-        end = heads[1] if len(heads) > 1 else len(lines)
+        relative = paths.relative(path)
+        if relative.startswith(DEMAND_PREFIXES) and lines[start].strip() == "## 需求澄清":
+            if len(heads) < 2:
+                offenders.append(f"{relative}: 「需求澄清」chapter present but no following h2")
+                continue
+            start = heads[1]
+        position = heads.index(start)
+        end = heads[position + 1] if position + 1 < len(heads) else len(lines)
         body = [line for line in lines[start + 1 : end] if line.strip()]
         if not body:
             offenders.append(f"{paths.relative(path)}: the first h2 chapter is empty")
