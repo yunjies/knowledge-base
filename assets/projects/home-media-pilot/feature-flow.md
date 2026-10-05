@@ -1850,7 +1850,7 @@ flowchart TD
 
 ## PROVIDER_SETTINGS
 
-Provider 管理以 Provider Link 为可写配置单位，Link 按 Provider 类型区分并支持多条；ProviderConfig API 保留为旧客户端兼容面。NAS 首次 SSH 公钥引导仍沿旧 ProviderConfig 路径执行，不代表 NAS 已完整支持 Link 多路由。NAS 引导时的一次性密码、主机指纹与 known_hosts 行不进入持久化配置、响应或日志。
+Provider 管理以 Provider Link 为可写配置单位，Link 按 Provider 类型区分；Web 设置页对每个 Provider 呈现并维护其唯一配置实例（单实例形态）。ProviderConfig API 保留为旧客户端兼容面。NAS 首次 SSH 公钥引导仍沿旧 ProviderConfig 路径执行，不代表 NAS 已完整支持 Link 多路由。NAS 引导时的一次性密码、主机指纹与 known_hosts 行不进入持久化配置、响应或日志。
 
 ```mermaid
 flowchart TD
@@ -1867,7 +1867,7 @@ flowchart TD
 
 ### START_PROVIDER
 
-Web 设置页是「Provider 注册」界面：按注册目录逐 Provider 一个二级块，固定参数（类型标识、能力、凭据字段、Endpoint 是否必填、是否支持连接测试、插件来源）只读展示；凭据、Endpoint 等开放配置以该类型下的 Link 实例列表呈现，经 Link 编辑入口管理。不展示 Agent、自动化或通用凭据面板。
+Web 设置页是「Provider 注册」界面（`src/frontend/src/views/SettingsView.tsx`）：按注册目录逐 Provider 一个块（块标题为注册定义的 display_name），固定参数（provider_type、capabilities、credential_fields、endpoint_required、supports_connection_test、plugin_id/plugin_version）只读展示；并内嵌该 Provider 唯一配置实例的开放参数（Endpoint、超时、优先级、启用状态、凭据配置状态）与「配置」编辑入口（经 `ProviderLinkModal`）。尚无配置的 Provider 显示「尚未配置」并提供内联「配置」入口直接创建——每个 Provider 单实例，设置页不提供创建第二个实例的入口，也没有独立的连接实例总列表视图。页面底部以紧凑署名条（`.settings-credits`）承载 TMDb 署名原文与 `/tmdb-logo.svg` 链接。不展示 Agent、自动化或通用凭据面板。
 
 - 输入参数：无
 - 输出参数：
