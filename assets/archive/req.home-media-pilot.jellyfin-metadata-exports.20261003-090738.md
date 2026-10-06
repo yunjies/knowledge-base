@@ -38,7 +38,7 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class START,DEVELOP,DEV_GATE,TEST,TEST_GATE,ARCHIVE,ACCEPT,ACCEPT_GATE,REPORT done
-  class BLOCKED todo
+  class BLOCKED done
 ```
 
 ## START
@@ -63,7 +63,7 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class D_START,D_AGENT,D_SCOPE,D_OUT done
-  class D_FAIL todo
+  class D_FAIL done
 ```
 
 - 输入参数：
@@ -158,7 +158,7 @@ flowchart TB
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class T_START done
   class T_AGENT,T_RUN,T_VERDICT,T_PASS done
-  class T_FAIL todo
+  class T_FAIL done
 ```
 
 - 输入参数：
@@ -310,7 +310,7 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class C_START,C_AGENT,C_VERDICT,C_PASS done
-  class C_FAIL todo
+  class C_FAIL done
 ```
 
 - 输入参数：
