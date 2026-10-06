@@ -244,6 +244,8 @@ flowchart TD
 
 建立媒体库并绑定元数据与字幕 Provider Link。媒体库保存 Provider 类型标识及对应 Link ID；Link 属于一个 Provider 类型，同一类型可有多个 Link。逻辑根路径到物理路径的映射来自部署环境，媒体库与 Link 配置存于应用数据库。
 
+媒体库顺序保存在数据库并参与列表契约。版本迁移在 `src/migrations/versions/0014_media_library_sort_order.py`；读取与写入规则见 `src/packages/application/libraries.py`。`GET /media-libraries` 按持久化顺序返回列表；`PUT /media-libraries/order` 的请求必须恰好包含当前全部媒体库 ID 且各不重复，服务按请求顺序写成连续序号。新建媒体库（包括 Jellyfin 同步创建）追加到末尾，删除后顺序重新连续。Web 设置页通过上移、下移按钮调整顺序并提交完整 ID 列表；资源页媒体库下拉直接沿用 `GET /media-libraries` 的列表顺序。因而列表顺序是设置页、排序 API 与资源选择器之间的共同契约。
+
 ProviderRegistry 合并内建定义与 `home_media_pilot.providers` entry-point 扩展定义；类型定义是可发现目录，不等于已有运行适配器。内建元数据/字幕工厂只为源码映射表覆盖的类型构造适配器，不能据注册发现推断任意扩展已接通。
 
 媒体库写入前校验逻辑根路径已配置且未被其它媒体库占用，并校验所选 Link 存在、属于请求声明的同一 Provider 类型且已启用。未给 Link ID 的兼容请求按类型选取启用 Link 中优先级最小者；没有 Link 时才检查旧 ProviderConfig 兼容配置。绑定 Link 被使用时不能删除。
