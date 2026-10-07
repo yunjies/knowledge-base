@@ -99,13 +99,15 @@
 
 多项目时的取法：`assets/projects/` 下每个子目录即一个项目，`<项目>` 与 `<repository>` 不必同名（前者是本知识库的收录名，后者是该仓库的克隆名）。
 
-### 项目仓库改动的开发流程入口
+### `assets/projects/` 下任何改动的强制入口
 
-修改 `assets/projects/<项目>/<repository>/` 内的项目仓库前，按[需求流程模板的 DEVELOP 节点](assets/inbox/template.md#develop)执行分支策略；具体规则只在该开发节点承载，本文件不复制另一份。Git 提交、同步或 GitHub 操作另按[版本管理 skill](.agents/skills/version-management/SKILL.md)执行；GitHub 工具护栏见该 skill 的 reference。
+任何需要创建、修改、删除或移动 `assets/projects/<项目>/` 下文件的需求，都必须先在 `assets/inbox/` 新建或续办需求，再按[需求流程模板](assets/inbox/template.md)执行；不得先改后补，小改、源码改动和 `feature-flow.md` 等项目文档改动均不例外。
+
+项目仓库分支策略按[需求流程模板的 DEVELOP 节点](assets/inbox/template.md#develop)执行；具体规则只在该开发节点承载，本文件不复制另一份。Git 提交、同步或 GitHub 操作另按[版本管理 skill](.agents/skills/version-management/SKILL.md)执行；GitHub 工具护栏见该 skill 的 reference。
 
 ### 需求收件箱的用法
 
-`assets/inbox/` 承载**尚未完成的需求**，一条需求一个文件。本节是执行期规则——收到一条需要多步才能完成的需求时按本节行事；写入形态的完整规格（前置块各键的取值口径、配色取色、对 P-01 的放宽依据）在该目录的 [README](assets/inbox/README.md)，本处不复制，只给入口与不可偏离的约束。
+`assets/inbox/` 承载尚未完成的需求，一条需求一个文件。本节规定建单、执行与归档规则；项目文件改动的触发条件见上节，其他范围的多步需求也按本节办理。文件形态与准入规格见该目录 [README](assets/inbox/README.md)。
 
 **开一条需求**：
 
