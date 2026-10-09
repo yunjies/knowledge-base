@@ -1,0 +1,764 @@
+diff --git a/package.json b/package.json
+index bde2e8c..a7287ab 100644
+--- a/package.json
++++ b/package.json
+@@ -10,7 +10,11 @@
+     "./package.json": "./package.json"
+   },
+   "scripts": {
+-    "test": "node --test"
++    "test": "node --test",
++    "preview:session": "node scripts/session-preview.mjs"
++  },
++  "devDependencies": {
++    "playwright": "1.63.0"
+   },
+   "files": [
+     "index.js",
+diff --git a/tests/README.md b/tests/README.md
+index 88ddbeb..5851a13 100644
+--- a/tests/README.md
++++ b/tests/README.md
+@@ -1,23 +1,43 @@
+ # 测试说明
+ 
+-本套件守护独立 Settings provider 的静态入口与包契约；它不证明浏览器中真实 bundle 已装配，也不证明其他 DSH 版本仍满足同一服务契约。
++本套件的静态检查守护独立 Settings provider 的入口与包契约；`preview:session` 则在临时 Web profile 中提供真实浏览器的本地 Settings 持久化证据。两者都不证明其他 DSH 版本仍满足同一服务契约。
+ 
+ ## 静态面
+ 
+ 从仓库根执行 `npm test`，断言 Host provider 替换守卫、`webRuntime.trustedHosts` 到 authenticated index injection 的传递、非法服务值 fail-closed，以及 client module id 与包名一致；判据为全部用例通过且退出码为 0。
+ 
+-从仓库根执行 `pnpm pack --dry-run`，检查分发文件是否由 `package.json` 的 `files` 字段约束；判据为包清单能提供 Host 入口、client bundle、profile patch、安装说明与许可证。
++从仓库根执行 `npm pack --dry-run`，检查分发文件是否由 `package.json` 的 `files` 字段约束；判据为包清单能提供 Host 入口、client bundle、profile patch、安装说明与许可证。
+ 
+-## 活体面
++静态测试与包清单检查不启动 DSH Web 或浏览器，不能替代活体预览。
+ 
+-浏览器与真实 Web profile 的验收步骤见[部署与使用说明](../../deploy.md)；必须实际打开 Models 页面、保存一项配置并刷新确认仍可读，单跑静态测试不能替代这项证据。
++## 活体面：自动化预览
++
++依赖已安装的 npm dependencies（Playwright 版本由 `package.json` 与 lockfile 固定）；运行预览前，`DSH_HOME` 必须指向一个已存在且受保护的 DSH home，以便检查路径重叠，`DSH_CLI` 必须在父 shell 中设置为绝对可执行文件路径，且 artifact 路径必须是新建目标、绝对路径并位于仓库与 `DSH_HOME` 之外。
++
++从仓库根执行以下命令，先将占位符替换为符合上述条件的实际路径：
++
++```bash
++export DSH_CLI="$(command -v dsh)"
++export DSH_HOME="<existing-protected-DSH-home>"
++npm run preview:session -- --artifacts "<fresh-absolute-artifact-directory>"
++```
++
++Runner 将随包提供的 `web` 模板复制到全新的临时 home，给 DSH 子进程清除继承的 `DSH_PROFILE` 与 `DSH_PROFILE_DIR`，安装构建出的 tarball，并在 loopback 的临时端口启动服务后运行真实 Chromium；结束时移除临时 home 与服务器，保留指定目录中的截图、录屏及 tarball。
++
++自动化预览在 Models 设置中使用无效的合成 OpenAI key，关闭 Preview Notice 并将官方 DeepSeek credential onboarding 设为稍后配置，不输入 DeepSeek key；它保存配置并刷新后验证本地设置仍存在，不发起模型/provider API 请求，因此只证明本地设置持久化，不证明凭据有效性或服务连通性。
++
++该自动化 runner 不声称验证浏览器控制台错误；需要控制台读写错误核验时，按[部署与使用说明](../../deploy.md)中的手动持久 profile 部署验收步骤执行。
++
++## 活体面：手动持久 profile 验收
++
++浏览器与真实持久 Web profile 的安装、Models 页面操作、刷新验证与回滚步骤见[部署与使用说明](../../deploy.md)；必须实际打开 Models 页面、保存一项配置并刷新确认仍可读，单跑静态测试不能替代这项证据。
+ 
+ 每次 DSH 版本升级后，都在隔离 Web profile 重做活体验收；不得直接用运行中的用户 profile 做兼容性探测。
+ 
+ ## 未覆盖面
+ 
+-仓库没有可独立启动的自动化 Web E2E 脚本；活体验收依赖 DSH Web profile、浏览器与部署参数。
+-
+ 当前静态断言不遍历所有 Settings schema，也不覆盖每个模型 provider 的配置变体。
+ 
+-未来 DSH 版本对 `ui-settings` entry、`webRuntime` 或 `configForms` 服务契约的改变，必须重新验收；本包在 profile 中留存不代表自动兼容。
+\ No newline at end of file
++预览证明的是当前运行环境中的本地设置持久化，不验证模型 API、凭据有效性或未来 DSH 版本兼容性。
++
++未来 DSH 版本对 `ui-settings` entry、`webRuntime` 或 `configForms` 服务契约的改变，必须重新验收；本包在 profile 中留存不代表自动兼容。
+diff --git a/package-lock.json b/package-lock.json
+new file mode 100644
+index 0000000..7e69775
+--- /dev/null
++++ b/package-lock.json
+@@ -0,0 +1,45 @@
++{
++  "name": "dsh-settings-trusted-authority-plugin",
++  "version": "0.1.0",
++  "lockfileVersion": 3,
++  "requires": true,
++  "packages": {
++    "": {
++      "name": "dsh-settings-trusted-authority-plugin",
++      "version": "0.1.0",
++      "license": "MIT",
++      "devDependencies": {
++        "playwright": "1.63.0"
++      }
++    },
++    "node_modules/playwright": {
++      "version": "1.63.0",
++      "resolved": "https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz",
++      "integrity": "sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "playwright-core": "1.63.0"
++      },
++      "bin": {
++        "playwright": "cli.js"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/playwright-core": {
++      "version": "1.63.0",
++      "resolved": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz",
++      "integrity": "sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "bin": {
++        "playwright-core": "cli.js"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    }
++  }
++}
+diff --git a/scripts/session-preview.mjs b/scripts/session-preview.mjs
+new file mode 100644
+index 0000000..a36d774
+--- /dev/null
++++ b/scripts/session-preview.mjs
+@@ -0,0 +1,510 @@
++import { spawn, spawnSync } from 'node:child_process'
++import { access, link, lstat, mkdir, mkdtemp, realpath, rm, unlink } from 'node:fs/promises'
++import { constants } from 'node:fs'
++import { tmpdir } from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
++const args = process.argv.slice(2)
++const artifactsFlags = args.flatMap((value, index) => value === '--artifacts' ? [index] : [])
++const artifactsArg = artifactsFlags.length === 1 ? args[artifactsFlags[0] + 1] : null
++if (artifactsFlags.length !== 1 || args.length !== 2 || !artifactsArg || artifactsArg.startsWith('--')) {
++  console.error('Usage: npm run preview:session -- --artifacts <explicit-directory>')
++  process.exit(2)
++}
++
++const artifacts = path.resolve(process.cwd(), artifactsArg)
++const activeHomeArg = process.env.DSH_HOME
++const dshCli = process.env.DSH_CLI
++const profileName = `session-preview-${process.pid}-${Date.now()}`
++const syntheticApiKey = 'sk-session-preview-invalid-not-a-real-secret'
++const secretValues = new Set([syntheticApiKey])
++let chromium
++let activeHome
++let tempBase
++let isolatedHome
++let server
++let browser
++let context
++let page
++let previewVideo
++let isolatedHomeCleanup = false
++let tarballName
++let artifactReal
++let output = ''
++let pendingLog = ''
++let startupUrl
++let startupError
++
++function isInside(child, parent) {
++  const relative = path.relative(parent, child)
++  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
++}
++
++function pathsOverlap(first, second) {
++  return isInside(first, second) || isInside(second, first)
++}
++
++async function resolveProspectivePath(candidate) {
++  let current = path.resolve(candidate)
++  const missing = []
++  while (true) {
++    try {
++      await lstat(current)
++    } catch (error) {
++      if (error.code !== 'ENOENT') throw error
++      const parent = path.dirname(current)
++      if (parent === current) throw error
++      missing.unshift(path.basename(current))
++      current = parent
++      continue
++    }
++    return path.resolve(await realpath(current), ...missing)
++  }
++}
++
++function assertIsolatedHome(candidate) {
++  const resolved = path.resolve(candidate)
++  if (!tempBase || path.dirname(resolved) !== tempBase || !path.basename(resolved).startsWith('dsh-session-preview-')) {
++    throw new Error('Refusing to remove a path that is not this run\'s generated temporary DSH_HOME')
++  }
++  if (!path.isAbsolute(resolved) || resolved === path.parse(resolved).root) {
++    throw new Error('Unsafe temporary DSH_HOME path')
++  }
++  if (activeHome && pathsOverlap(resolved, activeHome)) {
++    throw new Error('Refusing a temporary DSH_HOME overlapping the active DSH_HOME')
++  }
++}
++
++function sanitized(value) {
++  let text = String(value)
++    .replace(/(https?:\/\/[^\s"'<>?#]+)\?[^\s"'<>]*/gi, '$1?[REDACTED]')
++    .replace(/\b((?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|auth(?:orization)?|session(?:[_-]?id)?|api[_-]?key|secret|password)\b\s*[:=]\s*["']?)[^"'&\s,}\]]+/gi, '$1[REDACTED]')
++    .replace(/(Bearer\s+)[^\s]+/gi, '$1[REDACTED]')
++  for (const secret of secretValues) {
++    if (secret) text = text.split(secret).join('[REDACTED]')
++  }
++  return text
++}
++
++function run(command, commandArgs, env, label) {
++  const result = spawnSync(command, commandArgs, {
++    cwd: repo,
++    env,
++    encoding: 'utf8',
++    maxBuffer: 10 * 1024 * 1024,
++  })
++  if (result.error) throw new Error(`${label} could not start (${result.error.code ?? 'unknown error'})`)
++  if (result.status !== 0) {
++    const status = result.status ?? result.signal ?? 'unknown'
++    const stderr = result.stderr ?? ''
++    const tail = stderr.split(/\r?\n/).filter(Boolean).slice(-12).join('\n').slice(-2048)
++    const diagnostic = tail ? `: ${sanitized(tail)}` : ''
++    throw new Error(`${label} failed (status ${status})${diagnostic}`)
++  }
++  return `${result.stdout ?? ''}${result.stderr ?? ''}`
++}
++
++function inspectStartupOutput() {
++  const candidates = [...`${output}\n${pendingLog}`.matchAll(/https?:\/\/127\.0\.0\.1:\d+[^\s"'<>]*/g)]
++    .map(match => match[0].replace(/[),.;]+$/, ''))
++  for (const candidate of candidates.reverse()) {
++    try {
++      const parsed = new URL(candidate)
++      const sensitive = [...parsed.searchParams.entries()]
++        .filter(([key, value]) => /token|auth|session/i.test(key) && value)
++      if (sensitive.length) {
++        for (const [, value] of sensitive) {
++          secretValues.add(value)
++          secretValues.add(encodeURIComponent(value))
++        }
++        startupUrl = candidate
++        return
++      }
++    } catch {}
++  }
++}
++
++function recordServerLog(line) {
++  output = (output + line + '\n').slice(-30000)
++  inspectStartupOutput()
++}
++
++function redactAndCollect(chunk) {
++  pendingLog += chunk.toString()
++  const lines = pendingLog.split(/\r?\n/)
++  pendingLog = lines.pop() ?? ''
++  for (const line of lines) recordServerLog(line)
++  inspectStartupOutput()
++}
++
++async function waitForStartup() {
++  const deadline = Date.now() + 60000
++  while (!startupUrl && Date.now() < deadline) {
++    if (startupError) throw new Error(`DSH failed to start (${startupError.code ?? 'spawn error'})`)
++    if (server.exitCode !== null || server.signalCode !== null) {
++      throw new Error(`DSH exited during startup (${server.exitCode ?? server.signalCode})`)
++    }
++    await new Promise(resolve => setTimeout(resolve, 100))
++  }
++  if (!startupUrl) throw new Error('Timed out waiting for the loopback DSH URL')
++  return startupUrl
++}
++
++async function dismissPreviewNotice(targetPage) {
++  const notice = targetPage.getByRole('dialog', { name: 'Preview Notice', exact: true })
++  try {
++    await notice.waitFor({ state: 'visible', timeout: 5000 })
++  } catch (error) {
++    if (error.name === 'TimeoutError') return
++    throw error
++  }
++  if (await notice.count() !== 1) throw new Error('Expected exactly one Preview Notice dialog')
++
++  const continueButton = notice.getByRole('button', { name: 'Continue', exact: true })
++  if (await continueButton.count() !== 1) {
++    throw new Error('Preview Notice must expose exactly one exact Continue button')
++  }
++  await continueButton.click({ timeout: 5000 })
++  await notice.waitFor({ state: 'hidden', timeout: 5000 })
++}
++
++async function dismissApiKeyOnboarding(targetPage) {
++  const dialog = targetPage.getByRole('dialog', { name: 'Add an API key to get started', exact: true })
++  try {
++    await dialog.waitFor({ state: 'visible', timeout: 5000 })
++  } catch (error) {
++    if (error.name === 'TimeoutError') return
++    throw error
++  }
++  if (await dialog.count() !== 1) throw new Error('Expected exactly one API-key onboarding dialog')
++
++  const configureLater = dialog.getByRole('button', { name: 'Configure later', exact: true })
++  if (await configureLater.count() !== 1) {
++    throw new Error('API-key onboarding must expose exactly one exact Configure later button')
++  }
++  await configureLater.click({ timeout: 5000 })
++  await dialog.waitFor({ state: 'hidden', timeout: 5000 })
++}
++
++async function dismissBlockingModal(targetPage) {
++  const dialogs = targetPage.getByRole('dialog')
++  const visible = []
++  for (let index = 0; index < await dialogs.count(); index += 1) {
++    const dialog = dialogs.nth(index)
++    if (await dialog.isVisible()) visible.push(dialog)
++  }
++  if (visible.length !== 1) {
++    throw new Error('Expected exactly one visible known modal after navigation click timeout')
++  }
++
++  const notice = targetPage.getByRole('dialog', { name: 'Preview Notice', exact: true })
++  if (await notice.count() === 1 && await notice.isVisible()) {
++    const continueButton = notice.getByRole('button', { name: 'Continue', exact: true })
++    if (await continueButton.count() !== 1) throw new Error('Preview Notice must expose exactly one exact Continue button')
++    await continueButton.click({ timeout: 5000 })
++    await notice.waitFor({ state: 'hidden', timeout: 5000 })
++    return
++  }
++
++  const onboarding = targetPage.getByRole('dialog', { name: 'Add an API key to get started', exact: true })
++  if (await onboarding.count() === 1 && await onboarding.isVisible()) {
++    const configureLater = onboarding.getByRole('button', { name: 'Configure later', exact: true })
++    if (await configureLater.count() !== 1) {
++      throw new Error('API-key onboarding must expose exactly one exact Configure later button')
++    }
++    await configureLater.click({ timeout: 5000 })
++    await onboarding.waitFor({ state: 'hidden', timeout: 5000 })
++    return
++  }
++  throw new Error('Unexpected modal after navigation click timeout')
++}
++
++async function clickWithKnownDialogRecovery(targetPage, buttonName) {
++  const button = targetPage.getByRole('button', { name: buttonName, exact: true })
++  try {
++    await button.click({ timeout: 15000 })
++  } catch (error) {
++    if (error.name !== 'TimeoutError') throw error
++    await dismissBlockingModal(targetPage)
++    await button.click({ timeout: 15000 })
++  }
++}
++
++async function openSettingsModels(targetPage) {
++  const settingsDialog = targetPage.getByRole('dialog', { name: 'Settings', exact: true })
++  const requireUniqueSettingsDialog = async () => {
++    const count = await settingsDialog.count()
++    if (count > 1) throw new Error('Expected at most one exact Settings dialog')
++    return count
++  }
++  const dismissKnownOnboarding = async () => {
++    await dismissPreviewNotice(targetPage)
++    await dismissApiKeyOnboarding(targetPage)
++  }
++
++  await dismissKnownOnboarding()
++  let settingsCount = await requireUniqueSettingsDialog()
++  let settingsVisible = settingsCount === 1 && await settingsDialog.isVisible()
++  if (!settingsVisible) {
++    await clickWithKnownDialogRecovery(targetPage, 'Settings')
++    await settingsDialog.waitFor({ state: 'visible', timeout: 15000 })
++  }
++
++  await dismissKnownOnboarding()
++  settingsCount = await requireUniqueSettingsDialog()
++  settingsVisible = settingsCount === 1 && await settingsDialog.isVisible()
++  if (!settingsVisible) throw new Error('Settings dialog was not visible before Models navigation')
++  await clickWithKnownDialogRecovery(targetPage, 'Models')
++}
++
++async function verifyModels(targetPage) {
++  await openSettingsModels(targetPage)
++  await targetPage.getByRole('button', { name: 'Add model provider', exact: true }).click({ timeout: 15000 })
++
++  const dialog = targetPage.getByRole('dialog')
++  await dialog.waitFor({ state: 'visible', timeout: 15000 })
++  const providerSelect = dialog.locator('select[aria-label="Provider"]')
++  if (await providerSelect.count() !== 1) throw new Error('Settings dialog must expose exactly one provider select')
++  await providerSelect.selectOption('openai', { timeout: 15000 })
++
++  const providerEditor = providerSelect.locator('xpath=ancestor::div[.//input[@aria-label="API key"] and .//button[normalize-space(.)="Apply"]][1]')
++  if (await providerEditor.count() !== 1) throw new Error('Provider select must identify exactly one provider editor')
++  const editorProviderSelect = providerEditor.locator('select[aria-label="Provider"]')
++  const keyField = providerEditor.locator('input[aria-label="API key"]')
++  const applyButton = providerEditor.getByRole('button', { name: 'Apply', exact: true })
++  if (await editorProviderSelect.count() !== 1) throw new Error('Provider editor must expose exactly one provider select')
++  if (await keyField.count() !== 1) throw new Error('Provider editor must expose exactly one API key input')
++  if (await applyButton.count() !== 1) throw new Error('Provider editor must expose exactly one Apply button')
++  await keyField.evaluate(element => {
++    element.style.setProperty('color', 'transparent', 'important')
++    element.style.setProperty('caret-color', 'transparent', 'important')
++    element.style.setProperty('-webkit-text-security', 'disc', 'important')
++  })
++  await keyField.fill(syntheticApiKey, { timeout: 15000 })
++  await applyButton.click({ timeout: 15000 })
++  await targetPage.getByText('Saved openai.', { exact: true }).waitFor({ state: 'visible', timeout: 15000 })
++  await targetPage.screenshot({ path: path.join(artifacts, 'models-saved.png'), fullPage: true })
++
++  await targetPage.reload({ waitUntil: 'domcontentloaded', timeout: 30000 })
++  await openSettingsModels(targetPage)
++  await targetPage.getByText('openai', { exact: true }).waitFor({ state: 'visible', timeout: 15000 })
++  await targetPage.screenshot({ path: path.join(artifacts, 'models-after-refresh.png'), fullPage: true })
++}
++
++async function waitForServerExit(timeoutMs) {
++  if (!server || server.exitCode !== null || server.signalCode !== null) return true
++  return new Promise(resolve => {
++    const timer = setTimeout(() => resolve(false), timeoutMs)
++    server.once('exit', () => {
++      clearTimeout(timer)
++      resolve(true)
++    })
++  })
++}
++
++async function finalizePreviewVideo() {
++  if (!previewVideo) throw new Error('Preview video was not created')
++
++  const source = path.resolve(await previewVideo.path())
++  const target = path.join(artifactReal, 'session-preview.webm')
++  if (!artifactReal || path.dirname(source) !== artifactReal || !isInside(source, artifactReal)) {
++    throw new Error('Generated preview video is outside the exact artifacts directory')
++  }
++  if (path.dirname(target) !== artifactReal || !isInside(target, artifactReal)) {
++    throw new Error('Preview video target is outside the exact artifacts directory')
++  }
++
++  let sourceDetails
++  try {
++    sourceDetails = await lstat(source)
++  } catch (error) {
++    if (error.code === 'ENOENT') throw new Error('Generated preview video is missing')
++    throw error
++  }
++  if (!sourceDetails.isFile() || sourceDetails.isSymbolicLink() || await realpath(source) !== source) {
++    throw new Error('Generated preview video is not a regular file inside the artifacts directory')
++  }
++  try {
++    await lstat(target)
++    throw new Error('Preview video target already exists; refusing to overwrite or discard files')
++  } catch (error) {
++    if (error.code !== 'ENOENT') throw error
++  }
++
++  await link(source, target)
++  await unlink(source)
++}
++
++async function stopServer() {
++  if (!server || !server.pid) return
++  const groupAlive = () => {
++    if (process.platform === 'win32') return server.exitCode === null && server.signalCode === null
++    try {
++      process.kill(-server.pid, 0)
++      return true
++    } catch (error) {
++      return error.code !== 'ESRCH'
++    }
++  }
++  const signalGroup = signal => {
++    try {
++      if (process.platform !== 'win32' && server.pid) process.kill(-server.pid, signal)
++      else if (server.exitCode === null && server.signalCode === null) server.kill(signal)
++    } catch (error) {
++      if (error.code !== 'ESRCH') throw error
++    }
++  }
++  if (!groupAlive()) return
++  signalGroup('SIGTERM')
++  await waitForServerExit(5000)
++  if (groupAlive()) signalGroup('SIGKILL')
++  await waitForServerExit(2000)
++  if (groupAlive()) throw new Error('DSH server process group remained after SIGKILL')
++}
++
++let failure
++try {
++  if (!activeHomeArg) throw new Error('Set DSH_HOME explicitly so the runner can verify isolation from the active DSH home')
++  activeHome = await realpath(path.resolve(activeHomeArg))
++  tempBase = await realpath(tmpdir())
++  if (pathsOverlap(tempBase, activeHome)) throw new Error('Temporary base must be outside the active DSH_HOME')
++  const repoReal = await realpath(repo)
++  const artifactProspective = await resolveProspectivePath(artifacts)
++  if (pathsOverlap(artifactProspective, activeHome)) throw new Error('Artifacts directory must be outside the active DSH_HOME')
++  if (pathsOverlap(artifactProspective, repoReal)) throw new Error('Artifacts directory must be outside the project repository')
++  try {
++    await lstat(artifacts)
++    throw new Error('Artifacts path must be unused and nonexistent (existing paths and symlinks are rejected)')
++  } catch (error) {
++    if (error.code !== 'ENOENT') throw error
++  }
++
++  if (!dshCli || !path.isAbsolute(dshCli)) {
++    throw new Error('Set DSH_CLI to an absolute executable path from the intended parent shell before npm run, for example: DSH_CLI="$(command -v dsh)"')
++  }
++  try {
++    await access(dshCli, constants.X_OK)
++  } catch {
++    throw new Error('DSH_CLI must name an executable absolute path; set it from the intended parent shell with DSH_CLI="$(command -v dsh)" before npm run')
++  }
++
++  ;({ chromium } = await import('playwright'))
++  await mkdir(artifacts)
++  artifactReal = await realpath(artifacts)
++  if (pathsOverlap(artifactReal, activeHome)) throw new Error('Artifacts directory must not overlap the active DSH_HOME')
++  if (pathsOverlap(artifactReal, repoReal)) throw new Error('Artifacts directory must not overlap the project repository')
++
++  const packageResult = run('npm', ['pack', '--pack-destination', artifactReal], process.env, 'npm pack')
++  tarballName = packageResult.match(/dsh-settings-trusted-authority-plugin-\d+\.\d+\.\d+\.tgz/)?.[0]
++  if (!tarballName) throw new Error('npm pack did not report the expected package tarball')
++  const tarball = path.join(artifactReal, tarballName)
++
++  isolatedHome = await mkdtemp(path.join(tempBase, 'dsh-session-preview-'))
++  assertIsolatedHome(isolatedHome)
++  const homeReal = await realpath(isolatedHome)
++  if (homeReal !== path.resolve(isolatedHome)) throw new Error('Temporary DSH_HOME resolved unexpectedly')
++  const childEnv = { ...process.env, DSH_HOME: isolatedHome }
++  delete childEnv.DSH_PROFILE
++  delete childEnv.DSH_PROFILE_DIR
++  run(dshCli, [profileName, '--from-default-profile', 'web', '--dump-config'], childEnv, 'isolated profile initialization')
++  run(dshCli, ['plugin', '--profile', profileName, 'add', tarball], childEnv, 'plugin installation')
++
++  server = spawn(dshCli, [profileName, '--no-open', '--host', '127.0.0.1', '--port', '0'], {
++    cwd: repo,
++    env: childEnv,
++    detached: process.platform !== 'win32',
++    stdio: ['ignore', 'pipe', 'pipe'],
++  })
++  server.on('error', error => { startupError = error })
++  server.stdout.on('data', redactAndCollect)
++  server.stderr.on('data', redactAndCollect)
++
++  const address = await waitForStartup()
++  browser = await chromium.launch({ headless: true })
++  context = await browser.newContext({
++    locale: 'en-US',
++    viewport: { width: 1365, height: 900 },
++    recordVideo: { dir: artifactReal },
++  })
++  page = await context.newPage()
++  previewVideo = page.video()
++  await page.goto(address, { waitUntil: 'domcontentloaded', timeout: 30000 })
++  await dismissPreviewNotice(page)
++  await dismissApiKeyOnboarding(page)
++  await verifyModels(page)
++} catch (error) {
++  failure = error
++  if (page) {
++    await page.screenshot({ path: path.join(artifacts, 'session-preview-failure.png'), fullPage: true }).catch(() => {})
++  }
++} finally {
++  if (page) {
++    try {
++      await page.close()
++    } catch (error) {
++      failure ??= new Error(`Could not close preview page (${error.message})`)
++    }
++  }
++  if (context) {
++    try {
++      await context.close()
++    } catch (error) {
++      failure ??= new Error(`Could not close preview context (${error.message})`)
++    }
++  }
++  if (previewVideo) {
++    try {
++      await finalizePreviewVideo()
++    } catch (error) {
++      failure ??= new Error(`Could not finalize preview video (${error.message})`)
++    }
++  }
++  if (browser) {
++    try {
++      await browser.close()
++    } catch (error) {
++      failure ??= new Error(`Could not close preview browser (${error.message})`)
++    }
++  }
++  let serverStopped = true
++  await stopServer().catch(error => {
++    serverStopped = false
++    failure ??= new Error(`Could not stop DSH (${error.message})`)
++  })
++  if (pendingLog) {
++    const finalLine = pendingLog
++    pendingLog = ''
++    recordServerLog(finalLine)
++  }
++  if (isolatedHome && serverStopped) {
++    try {
++      assertIsolatedHome(isolatedHome)
++      const details = await lstat(isolatedHome)
++      const resolved = await realpath(isolatedHome)
++      if (details.isSymbolicLink() || !details.isDirectory() || resolved !== path.resolve(isolatedHome)) {
++        throw new Error('Temporary DSH_HOME changed identity; refusing cleanup')
++      }
++      await rm(isolatedHome, { recursive: true, force: false })
++      isolatedHomeCleanup = true
++    } catch (error) {
++      if (error.code === 'ENOENT') isolatedHomeCleanup = true
++      else failure ??= new Error(`Could not safely remove generated temporary DSH_HOME (${error.message})`)
++    }
++  }
++}
++
++if (failure) {
++  console.error(`PREVIEW_RESULT=FAIL ${sanitized(failure.stack ?? failure.message)}`)
++  process.exitCode = 1
++} else {
++  const previewOrigin = `${new URL(startupUrl).origin}/`
++  console.log('PREVIEW_RESULT=PASS (Models provider saved and remained after refresh)')
++  console.log(`PREVIEW_PROFILE=${profileName}`)
++  console.log(`PREVIEW_ORIGIN=${previewOrigin}`)
++  console.log(`PACKAGE_ARTIFACT=${tarballName}`)
++  console.log(`PROFILE_CLEANUP=${isolatedHomeCleanup ? 'removed' : 'not-removed'}`)
++  console.log(`PREVIEW_ARTIFACTS_DIR=${artifactReal}`)
++  console.log('PREVIEW_ARTIFACTS=models-saved.png, models-after-refresh.png, session-preview.webm')
++}
+diff --git a/tests/workflow.test.js b/tests/workflow.test.js
+new file mode 100644
+index 0000000..2ab9514
+--- /dev/null
++++ b/tests/workflow.test.js
+@@ -0,0 +1,118 @@
++import assert from 'node:assert/strict'
++import { spawnSync } from 'node:child_process'
++import { lstat, mkdtemp, realpath, readdir, rm, writeFile } from 'node:fs/promises'
++import { readFileSync } from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { test } from 'node:test'
++import { fileURLToPath } from 'node:url'
++
++const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
++const manifest = JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8'))
++const lock = JSON.parse(readFileSync(path.join(repo, 'package-lock.json'), 'utf8'))
++const runner = path.join(repo, 'scripts/session-preview.mjs')
++
++function runPreview(args, env = process.env) {
++  return spawnSync(process.execPath, [runner, ...args], {
++    cwd: repo,
++    env,
++    encoding: 'utf8',
++  })
++}
++
++function overlaps(first, second) {
++  const relative = path.relative(first, second)
++  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
++}
++
++async function makeSyntheticDirectory(t, prefix) {
++  const base = path.dirname(repo)
++  const directory = await mkdtemp(path.join(base, prefix))
++  const identity = await realpath(directory)
++  const osTemp = await realpath(os.tmpdir())
++  const realActiveHome = process.env.DSH_HOME ? await realpath(process.env.DSH_HOME) : null
++  t.after(async () => {
++    const details = await lstat(directory)
++    assert.ok(details.isDirectory() && !details.isSymbolicLink())
++    assert.equal(await realpath(directory), identity)
++    assert.equal(path.dirname(identity), base)
++    assert.match(path.basename(identity), new RegExp(`^${prefix}`))
++    await rm(directory, { recursive: true, force: false })
++  })
++
++  assert.equal(path.dirname(identity), base)
++  assert.match(path.basename(identity), new RegExp(`^${prefix}`))
++  assert.equal(overlaps(identity, osTemp) || overlaps(osTemp, identity), false)
++  assert.equal(overlaps(identity, repo) || overlaps(repo, identity), false)
++  if (realActiveHome) assert.equal(overlaps(identity, realActiveHome) || overlaps(realActiveHome, identity), false)
++  return { directory, identity }
++}
++
++test('package command and exact Playwright version agree with the lockfile', () => {
++  assert.equal(manifest.scripts['preview:session'], 'node scripts/session-preview.mjs')
++  assert.equal(manifest.devDependencies.playwright, '1.63.0')
++  assert.equal(lock.packages[''].devDependencies.playwright, '1.63.0')
++  assert.equal(lock.packages['node_modules/playwright'].version, '1.63.0')
++  assert.equal(lock.packages['node_modules/playwright-core'].version, '1.63.0')
++})
++
++test('preview runner rejects malformed CLI usage before requiring DSH_HOME', () => {
++  for (const args of [[], ['--artifacts'], ['--other', 'somewhere'], ['--artifacts', 'one', '--artifacts', 'two']]) {
++    const result = runPreview(args, { ...process.env, DSH_HOME: '' })
++    assert.equal(result.status, 2, result.stderr)
++    assert.match(result.stderr, /Usage: npm run preview:session -- --artifacts <explicit-directory>/)
++  }
++})
++
++test('preview runner rejects artifact paths within the project repository', async t => {
++  const { directory: syntheticHome } = await makeSyntheticDirectory(t, 'test-preview-repo-guard-home-')
++  const candidate = path.join(repo, 'unused-preview-artifacts')
++  await assert.rejects(lstat(candidate), { code: 'ENOENT' })
++  const result = runPreview(['--artifacts', candidate], { ...process.env, DSH_HOME: syntheticHome })
++  assert.equal(result.status, 1, result.stderr)
++  assert.match(result.stderr, /Artifacts directory must be outside the project repository/)
++  await assert.rejects(lstat(candidate), { code: 'ENOENT' })
++})
++
++test('preview runner rejects an existing artifacts directory without modifying it', async t => {
++  const { directory: syntheticHome } = await makeSyntheticDirectory(t, 'test-preview-existing-home-')
++  const { directory: artifacts, identity } = await makeSyntheticDirectory(t, 'test-preview-existing-artifacts-')
++  const sentinel = path.join(artifacts, 'sentinel')
++  await writeFile(sentinel, 'unchanged')
++
++  const result = runPreview(['--artifacts', artifacts], { ...process.env, DSH_HOME: syntheticHome })
++  assert.equal(result.status, 1, result.stderr)
++  assert.match(result.stderr, /Artifacts path must be unused and nonexistent/)
++  assert.equal(await realpath(artifacts), identity)
++  assert.deepEqual(await readdir(artifacts), ['sentinel'])
++  assert.equal(readFileSync(sentinel, 'utf8'), 'unchanged')
++})
++
++test('missing DSH_CLI rejects an otherwise-valid unused artifacts directory before creation', async t => {
++  const { directory: artifactsParent } = await makeSyntheticDirectory(t, 'test-preview-missing-cli-artifacts-parent-')
++  const artifactPath = path.join(artifactsParent, 'unused-artifacts')
++  await assert.rejects(lstat(artifactPath), { code: 'ENOENT' })
++
++  for (const dshCli of [undefined, '']) {
++    const { directory: syntheticHome } = await makeSyntheticDirectory(t, 'test-preview-missing-cli-home-')
++    const env = { ...process.env, DSH_HOME: syntheticHome }
++    if (dshCli === undefined) delete env.DSH_CLI
++    else env.DSH_CLI = dshCli
++
++    const result = runPreview(['--artifacts', artifactPath], env)
++    assert.equal(result.status, 1, result.stderr)
++    assert.match(result.stderr, /Set DSH_CLI to an absolute executable path from the intended parent shell before npm run, for example: DSH_CLI="\$\(command -v dsh\)"/)
++    await assert.rejects(lstat(artifactPath), { code: 'ENOENT' })
++  }
++})
++
++test('active-home overlap is rejected before artifacts directory creation', async t => {
++  const { directory: syntheticHome, identity } = await makeSyntheticDirectory(t, 'test-preview-active-home-')
++  const artifactPath = path.join(syntheticHome, 'artifacts')
++
++  const result = runPreview(['--artifacts', artifactPath], { ...process.env, DSH_HOME: syntheticHome })
++  assert.equal(result.status, 1, result.stderr)
++  assert.match(result.stderr, /Artifacts directory must be outside the active DSH_HOME/)
++  await assert.rejects(lstat(artifactPath), { code: 'ENOENT' })
++  assert.equal(await realpath(syntheticHome), identity)
++})

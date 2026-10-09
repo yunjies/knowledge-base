@@ -1,6 +1,6 @@
 # DSH Settings trusted-authority 插件部署与使用
 
-本说明覆盖插件包的测试、打包、Web profile 安装、Models 页面验收与卸载。项目仓库位于 [dsh-settings-trusted-authority/](dsh-settings-trusted-authority/)，其 GitHub remote 为 [yunjies/dsh-settings-trusted-authority](https://github.com/yunjies/dsh-settings-trusted-authority)。
+本说明覆盖插件包的测试、打包、自动化临时预览、Web profile 安装、Models 页面验收与卸载。项目仓库位于 [dsh-settings-trusted-authority/](dsh-settings-trusted-authority/)，其 GitHub remote 为 [yunjies/dsh-settings-trusted-authority](https://github.com/yunjies/dsh-settings-trusted-authority)。
 
 ## 适用范围与替代行为
 
@@ -18,7 +18,7 @@ profile patch 只禁用 browser roster 中的 `ui-settings` provider 并插入�
 
 - DSH 已安装，目标 profile 使用 Web bundle，且插件管理器可写该 profile。
 - Host Web 启动参数已把目标 authority 纳入 `--trusted-host`；默认 Web bundle 会把 Web runtime 的信任列表传给 Connection，若 profile patch 另行覆盖 Connection 配置，两份值必须保持一致。
-- Node.js、npm 与 pnpm 可用；包不需要额外 runtime 安装步骤，执行入口取自仓库的 `package.json`。
+- Node.js 与 npm 可用；包不需要额外 runtime 安装步骤，执行入口取自仓库的 `package.json`。
 - 安装或移除 bundle 会改变 profile membership；必须通过当前部署所用的服务管理器重启该 profile 后再做浏览器验收。
 
 ## 测试与打包
@@ -34,13 +34,31 @@ npm test
 在仓库根目录预览实际包内容并生成 tarball：
 
 ```bash
-pnpm pack --dry-run
-pnpm pack
+npm pack --dry-run
+npm pack
 ```
 
-`pnpm pack --dry-run` 的分发清单以 `package.json` 的 `files` 字段为准；生成的 `.tgz` 被仓库 `.gitignore` 排除，可随时重建。
+`npm pack --dry-run` 的分发清单以 `package.json` 的 `files` 字段为准；生成的 `.tgz` 被仓库 `.gitignore` 排除，可随时重建。
 
-## 安装与验收
+## 自动化临时预览
+
+自动化预览使用真实 Chromium 和全新的临时 Web home，验证 Models 设置保存后刷新仍可读；它不是对持久用户 profile 的部署操作，也不替代下节的手动持久 profile 验收。
+
+依赖已安装的 npm dependencies（Playwright 版本由 `package.json` 与 lockfile 固定）；`DSH_HOME` 必须指向已存在且受保护的 DSH home，以便进行路径重叠检查，`DSH_CLI` 必须在父 shell 中设置为绝对可执行文件路径，artifact 路径必须是新建目标、绝对路径且位于仓库与 `DSH_HOME` 之外。
+
+从仓库根目录执行以下命令，并替换占位路径：
+
+```bash
+export DSH_CLI="$(command -v dsh)"
+export DSH_HOME="<existing-protected-DSH-home>"
+npm run preview:session -- --artifacts "<fresh-absolute-artifact-directory>"
+```
+
+Runner 将随包提供的 `web` 模板复制到全新的临时 home，清除其 DSH 子进程继承的 `DSH_PROFILE` 与 `DSH_PROFILE_DIR`，安装构建出的 tarball，并在 loopback 的临时端口启动服务后运行真实 Chromium；结束时移除临时 home 与服务器，保留 artifact 目录中的截图、录屏与 tarball。
+
+该预览使用无效的合成 OpenAI key，仅在 Settings→Models 中验证本地配置保存与刷新读回；它不会发起模型/provider API 请求，不能证明凭据有效性或服务连通性，也不声称验证浏览器控制台错误。
+
+## 安装与手动持久 profile 验收
 
 将 `<profile>` 替换为目标 Web profile 名称，并在仓库根目录运行：
 

@@ -1,0 +1,8 @@
+Earlier knowledge-base lint session output, copied from the successful tool result before the unrelated Home Media Pilot inbox request appeared in the current workspace. This is a transcript extract, not a separate rerun or a current full-tree status.
+
+Command: UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q
+Working directory: /mnt/deepseek-harness/knowledge-base
+
+...............................................                          [100%]
+47 passed in 28.01s
+[exit code: 0]

@@ -1,0 +1,16 @@
+Preview command output preserved from the completed session tool result; the preview/profile/browser flow was not rerun to create this transcript extract.
+
+$ DSH_CLI="$(command -v dsh)" DSH_HOME=/mnt/deepseek-harness/data npm run preview:session -- --artifacts /tmp/dsh-pilot-report-20261007-auto-0155-pass
+
+> dsh-settings-trusted-authority-plugin@0.1.0 preview:session
+> node scripts/session-preview.mjs -- --artifacts /tmp/dsh-pilot-report-20261007-auto-0155-pass
+
+PREVIEW_RESULT=PASS (Models provider saved and remained after refresh)
+PREVIEW_PROFILE=session-preview-21687-1791352171729
+PREVIEW_ORIGIN=http://127.0.0.1:38379/
+PACKAGE_ARTIFACT=dsh-settings-trusted-authority-plugin-0.1.0.tgz
+PROFILE_CLEANUP=removed
+PREVIEW_ARTIFACTS_DIR=/tmp/dsh-pilot-report-20261007-auto-0155-pass
+PREVIEW_ARTIFACTS=models-saved.png, models-after-refresh.png, session-preview.webm
+
+Exit status: 0. The completed shell tool invocation returned normally; the runner emits PREVIEW_RESULT=PASS only on its success branch, while its failure branch sets process.exitCode=1 (see scripts/session-preview.mjs lines 498-509).

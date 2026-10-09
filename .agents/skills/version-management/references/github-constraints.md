@@ -10,14 +10,11 @@
 
 ## Git 远端 URL 与协议选择
 
-- 本节只约束将写入 Git remote 配置的 GitHub 仓库地址；Issue、PR、API 与普通网页 HTTPS URL 不做协议转换。
-- 用户把 `https://github.com/OWNER/REPOSITORY[.git]` 作为 Git remote 地址提供且未明确要求保留 HTTPS 时，按[GitHub 官方远端切换说明](https://docs.github.com/en/get-started/git-basics/managing-remote-repositories)规范化为 `git@github.com:OWNER/REPOSITORY.git` 后再保存；明确要求 HTTPS 时保留 HTTPS。
-- 只在执行 Git 操作的目标环境中验证 GitHub SSH 认证后，才保存或使用转换后的 SSH remote；按[GitHub 官方 SSH 连接测试](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection)验证账号，并按[官方 SSH 主机指纹](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints)核实主机密钥。认证结果须包含预期的 GitHub 账号问候；不要只凭 SSH 到 DSH 机器成功或命令退出码推断 GitHub SSH 可用。
-- 若 GitHub SSH 主机密钥尚未建立可信记录、目标环境没有可用的 GitHub SSH 身份，或认证结果不能确认预期账号，停止转换并向用户说明缺口；不得盲目接受主机指纹或转而使用未授权凭证。
-- SSH 握手只确认 GitHub 账号身份，不证明该账号能访问目标仓库；在依赖转换结果前，用 [`git ls-remote`](https://git-scm.com/docs/git-ls-remote) `<SSH_REMOTE> HEAD` 验证目标仓库的读取权限。该读取不能证明写入权限。
-- 对 GitHub Enterprise 或自定义主机，不从 HTTPS 地址猜测 SSH 主机、端口或路径；使用仓库页面或管理员提供的规范 SSH clone URL，无法确认时先询问。
+- 本节只约束写入 Git remote 配置的 GitHub 仓库地址；Issue、PR、API 与普通网页 URL 不属于 Git remote。
+- 保留用户明确提供的 GitHub remote 协议；不得仅因地址使用 HTTPS 而自动改成 SSH，或反向改写为 HTTPS。
+- 只在创建 remote 或用户明确要求修改既有 remote 时写入，并用 `git remote -v` 核验保存结果。
 - SSH remote 只认证 Git 的 clone/fetch/push 等传输；需要 GitHub API 的 `gh` 命令仍按 GitHub CLI 登录约束单独认证。
-- 不因对话中出现 HTTPS 链接就改写现有 remote；只在创建 remote 或用户明确要求转换既有 remote 时写入，并用 `git remote -v` 核验保存结果。
+- 对 GitHub Enterprise 或自定义主机，使用仓库页面或管理员提供的规范 clone URL；无法确认主机、端口或路径时先询问，不从另一种协议的 URL 猜测。
 
 ## 变更操作护栏
 

@@ -6,6 +6,7 @@
 
 - [Unraid 上的 MetaTube Server 本地运维](metatube-server-unraid.md)：维护本地 Unraid 容器与连接故障时使用；安装步骤以笔记内链接的官方说明为准。
 - [DSH 远程 Web Settings 持久化问题的判别原则](dsh-trusted-web-authority-settings.md)：区分 Host 信任、页面/API 授权与客户端持久化策略时使用；具体插件部署仍查对应项目文档。
+- [DSH 启动 Token 自动同步方案报告](dsh-launch-token-auto-sync.md)：参考 DSH 启动 token 同步至 Nginx 反代并为首次访问引导认证的部署设计与当前验证边界。
 - [proxy 上的 Nginx + Authelia 认证入口](nginx-authelia-proxy-access.md)：维护 DSH Web 的认证反代时，查阅请求边界、运行配置取回路径、部署校验与验收方式。
 
 ## 什么进这里

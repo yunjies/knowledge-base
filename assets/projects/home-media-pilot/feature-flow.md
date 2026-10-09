@@ -132,7 +132,7 @@ flowchart TD
 
 运维人员通过 WebUI 或 CLI 进入系统。两者都不直接访问外部服务，全部业务执行落在应用服务边界上。
 
-WebUI 的 App 壳与数据加载集中在 `src/frontend/src/main.tsx`，各业务视图拆分为 `src/frontend/src/views/` 下的独立模块；入口以 hash 路由导航——URL 的 hash（形如 `#/overview`…`#/settings`）解析出当前视图并在导航时写回，未知 hash 回落到总览视图；`hashchange` 监听响应地址栏与前进后退产生的导航，首次渲染以当前 hash 初始化视图状态，故刷新停留在当前子界面。
+WebUI 的 App 壳与数据加载集中在 `src/frontend/src/main.tsx`，各业务视图拆分为 `src/frontend/src/views/` 下的独立模块；入口以 hash 路由导航——URL 的 hash（形如 `#/overview`…`#/settings`）解析出当前视图并在导航时写回，未知 hash 回落到总览视图；`hashchange` 监听响应地址栏与前进后退产生的导航，首次渲染以当前 hash 初始化视图状态，故刷新停留在当前子界面。设置页在主内容区提供二级左侧 Tab，依次为 Provider 与媒体库；Provider 为默认项，媒体库配置与原有管理操作位于第二项。媒体库不再是一级导航项，旧 `#/libraries` 地址兼容打开设置页的媒体库 Tab。
 
 入口同时分出两条去向：一条进入 `CONFIG_LIBRARY` 及其后的业务主干，一条进入 `VERSION_REPORT`——后者只服务于入口处对当前版本的呈现，不参与业务主干。
 
@@ -504,19 +504,21 @@ flowchart TD
     LOAD_LIBRARY -- 否 --> RES_ERROR(["返回未知媒体库错误"])
     LOAD_LIBRARY -- 是 --> COLLECT_FILES["按逻辑根路径前缀收集文件"]
     COLLECT_FILES --> FILTER_UNMATCHED{"只要未匹配资源？<br/>是则按未匹配状态过滤"}
-    FILTER_UNMATCHED -- 否 --> APPLY_LIMIT["应用条数上限"]
+    FILTER_UNMATCHED -- 否 --> APPLY_LIMIT["按 offset/limit 分页并计算 total"]
     FILTER_UNMATCHED -- 是 --> APPLY_LIMIT
     APPLY_LIMIT --> GROUP_PATHS["按媒体聚合其文件路径"]
-    GROUP_PATHS --> RES_DONE(["输出资源清单"])
+    GROUP_PATHS --> READ_SIDECARS["读取本地 sidecar 并补齐展示字段"]
+    READ_SIDECARS --> RES_DONE(["输出资源清单"])
     RES_ERROR --> RES_DONE
 ```
 
 - 输入参数：
   - `library_id`：标识符；来源为工程部署位置（WebUI 或 CLI 的请求）
   - `unmatched_only`：布尔；来源为工程部署位置
-  - `limit`：整数，条数上限；来源为工程部署位置
+  - `limit`：整数，分页条数；来源为工程部署位置
+  - `offset`：非负整数，分页起点；来源为工程部署位置
 - 输出参数：
-  - `resources`：资源清单；去向为 `RES_DONE`
+  - `resources`：当前页资源清单及筛选后的总数；去向为 `RES_DONE`
   - `error_response`：错误响应；去向为 `RES_DONE`
 
 ### START_RES
@@ -526,7 +528,8 @@ flowchart TD
 - 输入参数：
   - `library_id`：标识符；来源为工程部署位置（WebUI 或 CLI 的请求）
   - `unmatched_only`：布尔；来源为工程部署位置
-  - `limit`：整数，条数上限；来源为工程部署位置
+  - `limit`：整数，分页条数；来源为工程部署位置
+  - `offset`：非负整数，分页起点；来源为工程部署位置
 - 输出参数：
   - `resource_query`：资源查询条件；去向为 `LOAD_LIBRARY`
 
@@ -561,21 +564,51 @@ flowchart TD
 
 ### APPLY_LIMIT
 
-应用条数上限，并按媒体聚合其全部文件路径。
+按 `offset` 与 `limit` 选取当前页，并按媒体聚合其全部文件路径；同时计算匹配筛选条件的资源总数。
 
 - 输入参数：
   - `file_rows`：过滤后的联接结果；来源为 `FILTER_UNMATCHED`
 - 输出参数：
-  - `resource_list`：含媒体标识、标题、媒体类型、年份、季集、元数据状态与文件路径的资源清单；去向为 `GROUP_PATHS`
+  - `resource_list`：当前页资源及匹配筛选条件的总数；去向为 `GROUP_PATHS`
 
 ### GROUP_PATHS
 
-把同一媒体的多个文件路径归并到一条资源上，使一个媒体只出现一次。
+把同一媒体的多个文件路径归并到一条资源上，使一个媒体只出现一次，并保留用于本地 sidecar 读取的首个文件路径。
 
 - 输入参数：
   - `resource_list`：资源清单；来源为 `APPLY_LIMIT`
 - 输出参数：
-  - `resources`：按媒体去重后的资源清单；去向为 `RES_DONE`
+  - `resources`：按媒体去重后的资源清单；去向为 `READ_SIDECARS`
+
+### READ_SIDECARS
+
+在输出资源清单前，按每条资源的首个已索引媒体路径只读探测本地 sidecar；逻辑根与物理路径由配置根及 `LogicalPathMapper` 解析和约束。该步骤只补充响应字段，不写入数据库，也不改写扫描得到的资源标题。
+
+NFO 读取候选为同目录媒体 stem `.nfo`，电影另可读 `movie.nfo`；文件大小超过上限、含 `DOCTYPE`、解析失败或越出逻辑根时忽略该 sidecar，异常不使资源清单失败。可识别的字段包括 `title`/`originaltitle`、`year`、`plot`/`overview` 与 `thumb`。本地封面按 `poster.*`、`<video-stem>-poster.*`、`folder.*` 的候选顺序探测；只接受允许的图片扩展名、大小范围内且经 `LogicalPathMapper` containment 校验的文件。没有合格 sidecar 时保留现有资源字段，不因单个 sidecar 失败中断清单。
+
+字幕关联只检查已索引媒体文件路径的同目录同 stem 候选：实现以媒体路径替换扩展名，逐一查询 `.ass`、`.srt`、`.ssa`、`.sub`、`.vtt` 路径，并把精确命中的已索引字幕记录附入资源的 `subtitle_files`。每项带字幕媒体 ID、路径、文件状态与媒体库状态；未命中时该列表为空。此契约不声明语言后缀字幕的匹配行为。
+
+展示元数据以已有 `metadata_json` 的非空 Provider 值为先，本地 NFO 只补其缺项；媒体实体已存年份优先于 NFO 年份。匹配状态为 `matched` 且已有有效 Provider `poster_url` 时保留 Provider 封面；否则本地封面存在时响应给出同源相对图片 URL。资源服务在响应前按 `HttpUrl` 校验已存 Provider 图片地址；无效值视为缺失并可回退到本地封面，具体实现见 [resources.py](home-media-pilot/src/packages/application/resources.py)。NFO 中的 `thumb` 作为 `nfo_poster_url` 元数据保留，不替代本地封面服务 URL。图片请求由后续同源路由按数据库中的媒体库/媒体关联及配置逻辑根重新核验，使用固定候选查找并再次做路径边界校验；文件不存在或校验失败返回 404，不接受路径参数或回显物理路径，响应 MIME 限于白名单。
+
+资源 API 的 `poster_url` 对本地封面返回根相对图片接口路径。资源视图为以单个 `/` 开头且非 `//` 的路径拼接 `apiBase`，绝对 Provider URL 保持原样；`apiBase` 取自 `VITE_API_BASE_URL`，未配置时为空，因此图片请求落在页面同源。前后端分离 origin 的构建若配置 API base，本地封面请求也会发往 API origin。资源详情中的封面图使用浏览器 `loading="lazy"`；封面 URL 缺失或图片触发加载错误时显示 HMP 占位图。实现见 [ResourcesView](home-media-pilot/src/frontend/src/views/ResourcesView.tsx) 与 [api.ts](home-media-pilot/src/frontend/src/views/api.ts)。
+
+资源中心以对齐表格呈现资源，不使用画廊或瀑布流布局。表格可按名称、类型、路径与匹配状态排序；默认按显示资源名称升序，排序键为 `meta_title ?? title`。页面先对当前媒体库及搜索词、匹配状态筛选后的完整资源集排序，再切分页，因此排序不局限于当前页。页面仍提供全部、待匹配、已匹配状态筛选及未匹配计数；未匹配列表来自后端 `metadata_status == unmatched` 筛选，并列出具体已索引的未匹配资源。
+
+页面端按当前媒体库取回资源清单，并在页面生命周期内缓存资源及已访问的分页；分页缓存键覆盖媒体库、搜索词、匹配状态、排序字段与方向、每页数量及页号，显式刷新、资源刷新任务成功及候选选择保存后使该媒体库的缓存失效。媒体库、搜索词、匹配状态或排序条件变化时页码回到第一页，避免新结果集小于旧页偏移时显示空页。媒体类型显示中文电影或电视剧标签；详情仅在 episode/series 资源上显示季号与集号，电影详情不显示这两项。Inspector 不展示原始 `metadata` JSON，而展示标题、年份、类型、路径、媒体库、Provider ID、简介，以及候选与字幕分区。资源详情还展示关联的已索引字幕文件路径和索引状态；无关联项时显示未发现提示。搜索入口仅按标题或路径筛选资源，不提供字幕候选搜索入口；独立的字幕候选搜索流程不等于资源中心的搜索控件。
+
+本轮资源中心仅调整前端表格、排序/分页逻辑与样式及其测试，没有后端契约变化。离线单资源刮削验证使用既有测试 `tests/src/packages/application/test_phase4_resource_flow.py::test_library_scrape_only_creates_candidates_until_user_selects`：测试建立打开的匹配会话并断言候选已持久化（标题 Dune、Provider ID 123），不选择候选；临时媒体根仍为空，因此没有写入 sidecar。目标实例 `https://cyclonejoker.xyz:18081/` 未执行业务调用；只读读取 `/openapi.json` 时 TLS 证书链验证失败，因此目标实例上的刮削与在线 Provider 行为未验证。项目测试 `UV_CACHE_DIR=.uv-cache uv run pytest -q`、知识库 lint `UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q` 与 `npm run build` 均已通过。
+
+**【事实】**资源清单需保留索引与已匹配 Provider 元数据，同时让尚未入库的同目录 NFO 与本地封面能参与展示；本地文件可能损坏、越界、超限或在查询时消失。假设“展示元数据只能来自数据库”并非需求；假设“每个可读 sidecar 都可信”也不成立。若从目标重推，应在列表读取时临时读取受限 sidecar、按来源优先级合并响应字段，并用受控同源路由交付本地图片，而不把发现结果写成新的持久事实。
+
+**【反题】**最强反对意见是资源列表路由允许的上限（见[资源列表路由](home-media-pilot/src/apps/api/routes_phase4.py)）可能使逐项 NFO 读取与图片目录探测把多次随机 NAS I/O 放进一次列表请求；慢或高延迟 NAS 可显著拖慢列表，甚至让每次刷新都重复付出成本。可证伪条件为：在相同 NAS 与并发配置下，对有 sidecar 的代表性目录做多轮配对测量；若启用 sidecar 的端到端列表 p95 延迟持续达到禁用 sidecar 基线的两倍及以上，且绝对延迟超过该部署预先声明的列表 SLO，则此逐请求读取设计失败，应重新评估有失效策略的缓存或批量读取。此条件是未来可执行的测量标准，不是已完成的性能实测。弃用代价主要落在资源列表调用方和维护者：需要迁移封面交付/响应契约，并处理缓存失效及旧展示数据；现有已验证测试覆盖功能、安全边界与异常回退，不证明 NAS 性能。
+
+**【裁决】**采用按需 read-through：数据库 `metadata_json` 与 Provider 封面在已有值时优先，本地 NFO 只补展示缺项，本地 sidecar 不持久化到 DB。长期看这避免本地资料覆盖已匹配值，也避免把会随文件增删变更的外部事实复制进 DB 后引入缓存新鲜度、失效与重扫一致性复杂度；封面通过同源受控路由返回。已知代价是列表读取增加文件系统 I/O，且 NFO 资料不会成为持久 metadata；达到上述可测失败条件时，由资源列表维护者偿还这项性能债，评估有明确失效/一致性语义的缓存或批量化读取，而不是因未实测成本否决当前功能方案。
+
+- 输入参数：
+  - `resources`：按媒体去重、含索引路径与已存字段的资源列表；来源为 `GROUP_PATHS`
+  - `configured_roots`：逻辑根到物理根的映射；来源为部署配置
+- 输出参数：
+  - `resources`：含已合并展示元数据与适用封面 URL 的资源列表；去向为 `RES_DONE`
 
 ### RES_ERROR
 
@@ -591,7 +624,7 @@ flowchart TD
 资源清单流程的完成出口，输出可供后续流程消费的资源清单。
 
 - 输入参数：
-  - `resources`：资源清单；来源为 `GROUP_PATHS`
+  - `resources`：资源清单；来源为 `READ_SIDECARS`
   - `error_response`：错误响应；来源为 `RES_ERROR`
 - 输出参数：无
 

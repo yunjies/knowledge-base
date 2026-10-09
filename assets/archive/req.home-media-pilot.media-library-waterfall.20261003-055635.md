@@ -1,13 +1,14 @@
-# 需求：跑通 hmp 媒体库流程：按配置扫描与展示、读取已存 meta 展示标题与封面、瀑布流展示资源（先代码探针，真实 hmp 服务 webui 视觉校验等）
+# 需求：跑通 hmp 媒体库流程：按配置扫描与展示、读取已存 meta 展示标题与封面、瀑布流展示资源（已取消）
 
 ```yaml
 target: assets/projects/home-media-pilot/home-media-pilot/
 output: assets/projects/home-media-pilot/home-media-pilot/
 prompt:
   - 跑通hmp的媒体库流程：1. 支持根据媒体库的配置，扫描，展示。 2.支持读取已有的meta信息展示标题，封面等信息。3.以瀑布流的形式展示资源。先只做代码探针—，真实hmp服务webui视觉校验等
+  - 瀑布流需求取消，归档吧
 ```
 
-本需求要打通 Home Media Pilot 的媒体库浏览链路：按媒体库配置扫描索引并在界面上展示；读取已落库的元数据（`metadata_json` 中的标题、封面 `poster_url` 等）用于资源展示；把资源以瀑布流形式呈现。本轮只做代码探针与实现——视觉校验（真实 hmp 服务 WebUI 截图比对）等留待后续。
+本需求原计划打通 Home Media Pilot 的媒体库浏览链路；需求方已明确取消瀑布流需求，流程以取消终态结束并归档。未执行的流程节点保留其原状态，不表示已完成。
 
 ## 主流程图
 
@@ -27,13 +28,15 @@ flowchart TB
   REQUESTER_APPROVAL -->|"同意"| DONE(["需求完成，本文件归档"])
   REQUESTER_APPROVAL -->|"未同意或未回复"| APPROVAL_WAIT["等待需求方确认"]
   APPROVAL_WAIT -->|"需求方确认后"| REQUESTER_APPROVAL
+  REQUESTER_APPROVAL -.->|"需求方取消"| CANCELLED(["需求已取消，终止并归档"])
   BLOCKED -.->|"确认后"| DEVELOP
 
   classDef todo fill:#f9d71c,stroke:#8a6d00,color:#000
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class START,DEVELOP,DEV_GATE,TEST,TEST_GATE,ARCHIVE,ACCEPT,ACCEPT_GATE done
-  class REQUESTER_APPROVAL,APPROVAL_WAIT,DONE todo
+  class REQUESTER_APPROVAL,CANCELLED done
+  class APPROVAL_WAIT,DONE todo
   class BLOCKED stuck
 ```
 
@@ -627,6 +630,18 @@ flowchart TB
 
 - `ACCEPT_VERDICT`：逐条对应与否；去向为 `DEVELOP`、`REQUESTER_APPROVAL` 或 `DONE`。
 
+## CANCELLED
+
+需求方明确取消后，流程以取消终态结束。该终态只记录需求不再推进，不把未执行节点伪记为已完成；归档时未执行节点保留原状态。
+
+**输入**
+
+- `CANCELLATION_DECISION`：需求方明确取消本需求；来源为需求方。
+
+**输出**
+
+- `CANCELLATION_RECORD`：取消决定与本流程文档；去向为归档操作。
+
 ## DONE
 
 需求完成的终点标记：四个阶段都已完成、验收通过且需求方明确同意归档。本节点输出是把本文件整篇移入 `assets/archive/`，移动后不再修改本文件；知识库 GitHub 提交与推送是移动后的仓库发布步骤，按[assets/archive/README.md](../archive/README.md)办理，不记录为本文件的流程节点状态。
@@ -642,7 +657,7 @@ flowchart TB
 
 ## REQUESTER_APPROVAL
 
-验收通过后把结果提交给需求方，等待其明确回答是否同意把本需求归档。没有明确同意时，不得把「未回复」解释成同意，也不得自动移动文件。
+验收通过后把结果提交给需求方，等待其明确回答是否同意把本需求归档。需求方明确取消时转入取消终态；没有明确同意或取消时，不得把「未回复」解释成同意，也不得自动移动文件。
 
 **输入**
 
@@ -652,7 +667,8 @@ flowchart TB
 
 **输出**
 
-- `REQUESTER_DECISION`：需求方明确同意或拒绝归档；去向为 `DONE` 或 `APPROVAL_WAIT`。
+- `REQUESTER_DECISION`：需求方同意归档或尚未决定；去向为 `DONE` 或 `APPROVAL_WAIT`。
+- `CANCELLATION_DECISION`：需求方明确取消；去向为 `CANCELLED`。
 
 ## APPROVAL_WAIT
 

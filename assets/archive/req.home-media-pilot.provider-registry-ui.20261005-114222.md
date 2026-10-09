@@ -32,8 +32,7 @@ flowchart TB
   classDef todo fill:#f9d71c,stroke:#8a6d00,color:#000
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
-  class START,DEVELOP,TEST,ARCHIVE,ACCEPT,ACCEPT_GATE done
-  class DEV_GATE,TEST_GATE,REQUESTER_APPROVAL,APPROVAL_WAIT,DONE todo
+  class START,DEVELOP,TEST,ARCHIVE,ACCEPT,ACCEPT_GATE,DEV_GATE,TEST_GATE,REQUESTER_APPROVAL,APPROVAL_WAIT,DONE done
   class BLOCKED stuck
 ```
 

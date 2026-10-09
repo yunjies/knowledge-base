@@ -52,7 +52,7 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class START,DEVELOP,DEV_GATE,TEST,TEST_GATE,ARCHIVE,ACCEPT,ACCEPT_GATE done
-  class REQUESTER_APPROVAL,WAIT,DONE todo
+  class REQUESTER_APPROVAL,WAIT,DONE done
 ```
 
 ## START
