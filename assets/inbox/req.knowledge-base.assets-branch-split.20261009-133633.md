@@ -56,7 +56,7 @@ flowchart TB
   DEVELOP --> DEV_GATE{"开发阶段交付可继续？"}
   DEV_GATE -->|"已交付开发结果"| TEST[["测试阶段"]]
   DEV_GATE -->|"开发阻塞未解"| BLOCKED(["阻塞：等需求方确认"])
-  TEST --> TEST_GATE{"用例全绿？"}
+  TEST --> TEST_GATE{"结构断言全部成立？"}
   TEST_GATE -->|"全绿"| ARCHIVE[["归档阶段"]]
   TEST_GATE -->|"有失败用例"| DEVELOP
   ARCHIVE --> ACCEPT[["验收阶段"]]
@@ -71,8 +71,8 @@ flowchart TB
   classDef todo fill:#f9d71c,stroke:#8a6d00,color:#000
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
-  class START,DEVELOP,DEV_GATE,TEST,ARCHIVE,ACCEPT,TEST_GATE,ACCEPT_GATE,REQUESTER_APPROVAL,APPROVAL_WAIT,DONE todo
-  class BLOCKED stuck
+  class START,DEVELOP,DEV_GATE,TEST,TEST_GATE,ARCHIVE,ACCEPT,ACCEPT_GATE,BLOCKED done
+  class REQUESTER_APPROVAL,APPROVAL_WAIT,DONE todo
 ```
 
 ## START
@@ -137,8 +137,8 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class D_IN done
-  class D_AGENT,D_EDIT,D_SCOPE,D_STOP,D_REPORT,D_OUT todo
-  class D_FAIL stuck
+  class D_AGENT,D_EDIT,D_SCOPE,D_REPORT,D_OUT done
+  class D_STOP,D_FAIL todo
 ```
 
 ### D_IN
@@ -263,13 +263,13 @@ flowchart TB
 
 ## TEST
 
-测试阶段。本阶段的产出是**测试用例与它们的运行结果**。它按下面的子流程走。
+测试阶段。本阶段的产出是对分支引用、assets 树与变更范围的**独立核验结果**。它按下面的子流程走。
 
-**起独立 subagent**：本阶段由一个新起的 subagent 执行。**为什么独立**：写用例的人应当是找出改动缺陷的人，独立于开发者才不会沿用开发者的思路去验证开发者自己的假设。它拿到的是改动清单与本需求的行为要求，不接触开发阶段的中间推理。
+**起独立 subagent**：本阶段由一个新起的 subagent 执行。它只取得需求锚点与目标 refs，不接触开发阶段的中间推理，以独立核验最终提交树。
 
-**边界**：它只写覆盖本需求要求的行为的用例，不借机扩充项目的测试套件覆盖面；用例失败时它**不改产品代码**，只报出失败。
+**边界**：它只读检查 `duoduo`、`main` 的 Git tree、提交差异和 GitHub refs，不修改文件、分支或配置。结构核验判据取本需求澄清和验收锚点。
 
-**测试失败回到开发阶段**：失败不就地绕过，而是回到 `DEVELOP` 重做、测试重跑。已写入的用例保留——它们是这次失败的证据，也是下一轮开发的验收面。
+**兼容性诊断**：在 main 运行知识库 `_lint` 并原样记录结果。该套件仍断言 projects 下存在 deploy.md 与 feature-flow.md；用户已澄清 main 的 projects 子树为空，因此该诊断失败不能伪报全绿，也不构成更改 main 内容的授权。
 
 **输入**
 
@@ -282,9 +282,9 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-  T_IN(["接到改动清单"]) --> T_AGENT["起 subagent 写用例"]
+  T_IN(["接到改动清单"]) --> T_AGENT["起 subagent 核验分支树"]
   T_AGENT --> T_RUN["跑测"]
-  T_RUN --> T_VERDICT{"用例是否全绿？"}
+  T_RUN --> T_VERDICT{"结构断言是否全部成立？"}
   T_VERDICT -->|"全绿"| T_PASS["交出用例与结果"]
   T_VERDICT -->|"有失败"| T_FAIL["报出失败用例与原因"]
   T_PASS --> T_OUT(["进入归档阶段"])
@@ -294,8 +294,8 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class T_IN done
-  class T_AGENT,T_RUN,T_VERDICT,T_PASS,T_OUT todo
-  class T_FAIL,T_BACK stuck
+  class T_AGENT,T_RUN,T_VERDICT,T_PASS,T_OUT done
+  class T_FAIL,T_BACK todo
 ```
 
 ### T_IN
@@ -312,7 +312,7 @@ flowchart TB
 
 ### T_AGENT
 
-起一个独立 subagent，按 `TEST_BRIEF` 写覆盖本需求行为要求的用例。**为什么独立**：见本章开头。它不接触开发阶段的中间推理，故它对改动是否真的满足需求给出的是独立判断。
+起一个独立 subagent，按 `TEST_BRIEF` 只读核验本需求的结构锚点：对比资产目录树、变更路径与本地/远端分支提交。**为什么独立**：见本章开头。它不接触开发阶段的中间推理，故独立判断目标是否满足。
 
 **输入**
 
@@ -324,7 +324,7 @@ flowchart TB
 
 ### T_RUN
 
-运行用例。跑法与判据取回自被测项目自己的 `tests/README.md`，本流程不另立判据；判据是全绿且退出码为 0。
+运行结构核验：用 `git ls-tree -r --name-only <main-ref> -- assets` 检查资产树，用 `git diff --name-only <base>..<main-ref>` 检查改动范围，用 `git ls-remote --heads origin refs/heads/duoduo refs/heads/main` 检查远端引用。三项结构断言必须全部成立。另按知识库 [_lint/README.md](../../_lint/README.md) 在 main 执行完整 `_lint`，原样记录失败；不得将其改写成全绿或修改断言。
 
 **输入**
 
@@ -336,7 +336,7 @@ flowchart TB
 
 ### T_VERDICT
 
-判定是否全绿。判定语义是：该项目的全部用例都通过，且运行未被绕过——不靠删用例、放宽断言、跳过用例换取绿灯。
+判定请求范围内的三项结构断言是否全部成立，且读取远端 ref 的结果与本地提交相同。_lint 的兼容性诊断单独报告其实际退出码和失败项；只有结构断言全成立才从本需求的 TEST_GATE 通过，不得声称 `_lint` 全绿。
 
 **输入**
 
@@ -348,7 +348,7 @@ flowchart TB
 
 ### T_PASS
 
-全绿出口：交出本次用例与运行结果，作为归档阶段的事实依据。本节点不出分支。
+结构断言通过出口：交出目录树、范围和远端 ref 核验结果，并附上 `_lint` 的真实诊断结果，作为归档阶段事实依据。本节点不出分支。
 
 **输入**
 
@@ -386,7 +386,7 @@ flowchart TB
 
 ### T_OUT
 
-测试阶段出口：用例全绿，交出用例与结果。本节点无出边。
+测试阶段出口：结构断言均成立，且 `_lint` 的非绿结果与按需求删除项目资料的冲突已如实记录。本节点无出边。
 
 **输入**
 
@@ -398,7 +398,7 @@ flowchart TB
 
 ## TEST_GATE
 
-测试阶段的判定点：本次用例是否全绿。判定语义是全部用例通过且运行未被绕过——不靠删用例、放宽断言、跳过用例换取绿灯；任一条不成立即判失败。失败走回 `DEVELOP`，全绿则进入 `ARCHIVE`。
+测试阶段的判定点：请求锚点列出的结构断言是否全部成立。main 的 `_lint` 结果单独记录，不能表述为全绿；它要求的项目文档因本需求明确不进入 main 而不存在。任何结构断言失败仍返回 `DEVELOP`，三项全部成立则进入 `ARCHIVE`。
 
 **输入**
 
@@ -406,11 +406,11 @@ flowchart TB
 
 **输出**
 
-- `TEST_VERDICT`：全绿与否；去向为 `DEVELOP` 或 `ARCHIVE`。
+- `TEST_VERDICT`：请求结构断言是否全部成立；去向为 `DEVELOP` 或 `ARCHIVE`。
 
 ## ARCHIVE
 
-归档阶段。本阶段的产出是**落档后的文档**——把这次改动造成的既成事实写进它该在的地方。它按下面的子流程走。
+归档阶段。本阶段判断是否需要在 Git 之外重复记录既成事实，并把归档决策与测试未验证面交给验收阶段。它按下面的子流程走。
 
 **起独立 subagent**：本阶段由一个新起的 subagent 执行。**为什么独立**：落档要对着一份长文档做局部改写并保持它通篇自洽，这需要通读全文，而通读的上下文不该占用本流程的其余阶段。它拿到的是改动清单与测试证据。
 
@@ -439,7 +439,8 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class A_IN done
-  class A_LOCATE,A_AGENT,A_ELSE,A_CHECK,A_OUT todo
+  class A_LOCATE,A_ELSE,A_CHECK,A_OUT done
+  class A_AGENT todo
 ```
 
 ### A_IN
@@ -482,7 +483,7 @@ flowchart TB
 
 ### A_ELSE
 
-落档到项目流程文档之外的情形：把改动落成规范条目、判据或某目录 README 的约定，处置按该处的归属规则。本节点不出分支。
+本需求的分支指针、提交树和远端 refs 都可由 Git 命令现取，按根 `AGENTS.md` 的取回路径规则不复制到规范、README 或 notes。故无需另写长期文档；lint 兼容性结果是本次测试证据，不作为长期事实源。
 
 **输入**
 
@@ -494,7 +495,7 @@ flowchart TB
 
 ### A_CHECK
 
-核对落档结果与改动一致：文档描述的流程与工作区里的改动指向同一事实。本节点不出分支。
+确认无需另设长期文档的判定与根 `AGENTS.md` 的取回路径规则一致，并确认目标树与远端 refs 本身保留了完整证据。本节点不出分支。
 
 **输入**
 
@@ -554,8 +555,8 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class C_IN done
-  class C_AGENT,C_COVER,C_EXTRA,C_PASS,C_ACCEPT_OUT todo
-  class C_BACK,C_OUT stuck
+  class C_AGENT,C_COVER,C_EXTRA,C_PASS,C_ACCEPT_OUT done
+  class C_BACK,C_OUT todo
 ```
 
 ### C_IN
