@@ -15,7 +15,7 @@ prompt:
 
 ### 澄清记录
 
-三项澄清均消歧了 prompt 中的「保留结构」「当前本地」与「GitHub 仓库」：
+四项澄清均消歧了 prompt 中的「保留结构」「当前本地」与「GitHub 仓库」：
 
 - 问答：main 上的 assets 结构你希望怎么保留？Git 不跟踪空目录，需用占位文件保目录结构。 → 仅目录占位（推荐）
   - 裁决：assets 下所有既有目录只用 `.gitkeep` 保留，资料文件不进入 main。
@@ -29,13 +29,17 @@ prompt:
   - 裁决：认证可用后推送 duoduo 与 main，并只读复核远端分支引用。
   - 反论与代价：远端 main 变更会让所有协作者立即看到精简后的 assets；若目标仓库/分支并非预期，影响面扩大，因此推送前核验远端分支与提交关系，且不强推。
   - 验收面：远端两分支的引用与本地目标提交一致。
+- 问答：你说“projects下没有内容”，请确认 main 要保留到哪一层？当前本地 main 是按 duoduo 保留所有子目录、每个目录放 `.gitkeep`，还未推送。 → 只保留 projects 根目录
+  - 裁决：`assets/projects/` 本身保留 `.gitkeep`；其下不保留项目、仓库或取证子目录。`assets/` 其它既有目录按原层级以 `.gitkeep` 占位。
+  - 反论与代价：main 不再展示项目名称和项目级结构，且知识库 lint 中依赖项目文档存在的用例会失败；项目结构的权威完整状态仍在 duoduo，若未来需要主干承载项目资料，须从 duoduo 恢复。
+  - 验收面：main 的 `assets/projects/` 下仅有 `.gitkeep`，没有任何项目子目录。
 
 ### 验收锚点
 
 以下锚点供独立验收阶段按仓库状态、目录内容与远端引用逐项核验。
 
 - A1：duoduo 表示完整当前知识库 → duoduo 的树含 assets 资料，且本次快照已提交并工作区干净。
-- A2：main 仅保留 assets 目录结构 → 所有既有 assets 子目录均可遍历，目录内仅含 `.gitkeep`，没有资料文件。
+- A2：main 仅保留 assets 目录占位结构 → `assets/projects/` 只含 `.gitkeep`、不含子目录；assets 的其他既有目录层级以 `.gitkeep` 保留，且不含资料文件。
 - A3：GitHub 两分支同步 → 远端 duoduo 与 main 分别指向对应本地提交，且无强制推送。
 
 ### 范围边界
