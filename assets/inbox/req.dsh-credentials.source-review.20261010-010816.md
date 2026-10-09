@@ -49,10 +49,8 @@ flowchart TB
   classDef todo fill:#f9d71c,stroke:#8a6d00,color:#000
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
-  class START done
-  class REVIEW,REVIEW_GATE done
-  class TEST,TEST_GATE,DEVELOP,REPORT,ACCEPT,ACCEPT_GATE,DONE todo
-  class BLOCKED stuck
+  class START,REVIEW,REVIEW_GATE,TEST,TEST_GATE,DEVELOP,REPORT,ACCEPT,ACCEPT_GATE,DONE done
+  class BLOCKED todo
 ```
 
 ## START
@@ -202,4 +200,4 @@ flowchart TB
 
 ## 状态配色
 
-本需求目前已完成范围澄清并开始独立源码评审。绿色表示已执行且有证据确认，黄色表示尚待完成，红色表示阻塞需外部协助；图中每个节点以颜色单独表示状态。
+本需求已完成六维独立评审、六条事实的红绿反证闭环、最终构建与独立验收；流程文件仍保留在收件箱，未获明确授权前不归档。候选对应测试均通过，但全量 `npm test` 为 371 passed、42 failed、退出码 1，失败与未验证范围已列入[评审报告](../projects/dsh-credentials/dsh-credentials/reviews/review-20261010-010816.md)。绿色表示已执行且有证据确认，黄色表示尚待完成，红色表示阻塞需外部协助；图中每个节点以颜色单独表示状态。

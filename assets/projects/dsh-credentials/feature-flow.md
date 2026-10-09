@@ -60,6 +60,8 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 | **cordis** | `harness.handle` 注册 Package 私有方法 | `host.call` |
 | **bundle** | profile `webServer` 上注册 `/dsh-credentials/api` 前缀路由 | 同源 `fetch` POST |
 
+bundle 路由的 [readJsonBody](dsh-credentials/src/host/adapters/bundle/registrar.ts#L257) 按 UTF-8 字节数累计请求体大小，超过 1 MiB 返回 HTTP 413；字符数不能代替字节数判定。
+
 宿主侧装配链（两形态同形）：端口实现 → `CredentialCatalog` → `src/host/tool.ts` 的 `register()`。客户端侧装配链（两形态同形）：`ClientPorts` → `src/client/index.ts` 的 `mount()`。
 
 `seam()` 在 seam 缺失时返回 `undefined` 而非抛错：目录仍要能列出「有哪些凭证」，即使这台机器一个都写不了。`register()` 与形态适配器返回的每个 disposer 都由 fiber 持有，插件停止、更新或移除时一并撤下。
@@ -217,6 +219,8 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 **登记表存在设置文档里**（namespace `dsh-credentials`），不在凭证 seam 里。两个事实决定了这一点：本部署的凭证 seam 是 `0.1.0-rc.7`，只暴露引用半（`describe`／`set`／`unset`）**没有枚举**，而目标列表最需要的恰恰是可枚举；而目标本来就不是机密——`~/.ssh/config` 早已把地址、账号、密钥路径明文写着。全程唯一真正的机密是密码，它不落任何存储。
 
+登记表变更（登记、改名、移除与重绑定后的密钥路径更新）由 [`TargetRegistry`](dsh-credentials/src/host/targets.ts) 串行执行，避免并发读-改-写互相覆盖。
+
 **输入**
 
 - `GRID_READY`：SSH 组标题已就位，目标面板可以挂在它下面；来源为 `GRID`。
@@ -287,7 +291,8 @@ flowchart TB
 
 **失败模式**
 
-- config 读失败：按空文件处理，只列登记表里的条目，不报错。
+- `~/.ssh/config` 不存在（`ENOENT`）：[`readSshConfig`](dsh-credentials/src/host/adapters/ports-targets.ts#L51) 按空文件处理；其他读取错误交由上层写入 warning 后按空文件降级，不阻断登记表读取。
+
 
 ### TRENDER
 
@@ -389,6 +394,7 @@ flowchart TB
 **失败模式**
 
 - 别名不在当前列表里：拒绝，且**不运行 ssh**——未知别名没有可描述的目标。
+- [`TargetRegistry.probe`](dsh-credentials/src/host/targets.ts#L131) 探活期间若目标被移除或同别名身份改变，旧探活结果不返回成功 verdict/view，也不写入探活缓存；面板保持该目标为未检测状态。
 - ssh 非零退出：按 stderr 分类，绝不因退出码非零而报 `connected`。
 - 机器不可达：报 `连不上` 并给出分类后的原因。
 
@@ -468,7 +474,7 @@ flowchart TB
 
 #### TRFORM
 
-展开一个与引导表单同形的输入面：地址、端口、账号默认取登记表里该目标的现有值，别名以禁用输入框的形式固定——重绑定不产生新机器、不产生新文件；密码留空待输。表单的可用性判定在 `src/client/targets-panel.ts` 的 `canRebindScan`／`canRebindSubmit`：地址填了才允许扫描，指纹已确认、地址账号非空且密码非空才允许提交。
+展开一个与引导表单同形的输入面：地址、端口、账号默认取登记表里该目标的现有值，别名以禁用输入框的形式固定——重绑定不产生新机器、不产生新文件；密码留空待输。表单的可用性判定在 [targets-panel.ts](dsh-credentials/src/client/targets-panel.ts) 的 `canRebindScan`／`canRebindSubmit`：地址填了才允许扫描，指纹已确认、地址账号非空且密码非空才允许提交。引导与重绑定的指纹确认均绑定当前 host+port；端点编辑会清除确认。重绑定表单保留上次指纹并在扫描端点与当前端点不同时标出陈旧提示，只有端点匹配且用户重新确认后才可提交；引导表单则在端点编辑时清除旧扫描指纹。
 
 **输入**
 
@@ -689,6 +695,8 @@ flowchart TB
 本节点是主图的分叉点：由**用户**判断目标机身份是否可信。确认则走 `BSINSTALL`，未确认则走 `BSWAIT`。
 
 本节点不判断技术条件，只承载一个事实：**第一次连接没有可对照的信任锚**。指纹由前一步显示，但「这是不是真的目标机」只能由人来判断——界面在此把提交密码的按钮**禁用**，而不是提示后放行。
+
+[BootstrapPanel](dsh-credentials/src/client/index.ts#L349) 将确认绑定当前扫描端点（host 与 port）；编辑任一端点字段都会清除确认状态并丢弃旧扫描结果，因此旧指纹不能授权新端点，改回原值也不会恢复先前确认。
 
 **输入**
 
