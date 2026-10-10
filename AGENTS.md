@@ -6,6 +6,8 @@
 
 多视角独立审核并维护跨轮事实记录时，读[审核事实记录的循环流程](_meta/notes/audit-record-loop-flow.md)。
 
+对指定工程源码开展多维独立评审并闭环修复时，按需读取[源码评审与证据闭环指南](_meta/review-guide.md)；协调者须先明确指南要求的工程根目录、源码范围与报告落点，再启动评审。
+
 审阅技能文档的 LLM 第一读者可读性时，可参考[审核报告样本](_meta/notes/doc-writing-standards/samples/llm-readability-audit-sample.md)；该样本的测试结果与未修复项不代表 knowledge-base 当前状态。
 
 ## 可达执行路径验证
