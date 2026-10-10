@@ -72,7 +72,7 @@ flowchart TB
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class START,DEVELOP,DEV_GATE,TEST,TEST_GATE,ARCHIVE,ACCEPT,ACCEPT_GATE,BLOCKED done
-  class REQUESTER_APPROVAL,APPROVAL_WAIT,DONE todo
+  class REQUESTER_APPROVAL,APPROVAL_WAIT,DONE done
 ```
 
 ## START
@@ -673,7 +673,7 @@ flowchart TB
 
 ## DONE
 
-需求完成的终点标记：四个阶段都已完成、验收通过且需求方明确同意归档。本节点输出是把本文件整篇移入 `assets/archive/`，移动后不再修改本文件；知识库 GitHub 提交与推送是移动后的仓库发布步骤，按[assets/archive/README.md](../archive/README.md)办理，不记录为本文件的流程节点状态。
+需求方于 2026-10-10 确认分支拆分已完成并明确要求归档。当前可见的 `duoduo`、`main` 本地分支分别与其 origin 跟踪分支对齐；本会话按需求方确认将本流程全部标绿。本节点输出是把本文件整篇移入 `assets/archive/`，移动后不再修改本文件；知识库 GitHub 提交与推送是移动后的仓库发布步骤，按[assets/archive/README.md](../archive/README.md)办理，不记录为本文件的流程节点状态。
 
 **输入**
 
@@ -713,6 +713,8 @@ flowchart TB
 ## BLOCKED
 
 阻塞出口：开发阶段无法继续时停在这里等协助。阻塞事项解决后返回开发阶段；未解决前不得把开发结果送入测试。
+
+
 
 **输入**
 

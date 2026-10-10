@@ -51,6 +51,7 @@ prompt:
 ```mermaid
 flowchart TB
   START(["需求就位，可开工"]) --> DEVELOP[["开发阶段"]]
+  REQUESTER_CANCEL(["需求方明确取消"]) --> CANCELLED(["需求取消并归档"])
   DEVELOP --> DEV_GATE{"开发结果可继续？"}
   DEV_GATE -->|"改动、自检和报告齐备"| TEST[["自动测试阶段"]]
   DEV_GATE -->|"存在未解阻塞"| BLOCKED(["流程阻塞并报告"])
@@ -75,10 +76,8 @@ flowchart TB
   classDef todo fill:#f9d71c,stroke:#8a6d00,color:#000
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
-  class START,DEVELOP,DEV_GATE,TEST,TEST_GATE,PREVIEW,PREVIEW_GATE,ARCHIVE done
-  class ACCEPT,ACCEPT_GATE done
-  class REQUESTER_APPROVAL,APPROVAL_WAIT,POST_MERGE,POST_GATE,DONE done
-  class BLOCKED,DEPLOY_FAIL todo
+  class START,REQUESTER_CANCEL,CANCELLED done
+  class DEVELOP,DEV_GATE,TEST,TEST_GATE,PREVIEW,PREVIEW_GATE,ARCHIVE,ACCEPT,ACCEPT_GATE,REQUESTER_APPROVAL,APPROVAL_WAIT,POST_MERGE,POST_GATE,DONE,BLOCKED,DEPLOY_FAIL todo
 ```
 
 ## START
@@ -93,6 +92,18 @@ flowchart TB
 
 - `REQ_SPEC`：本需求的规格，即前置块的三键内容；去向为 `DEVELOP`。
 - `CLARIFICATIONS`：澄清裁决与验收锚点；去向为 `DEVELOP`。
+
+## REQUESTER_CANCEL
+
+需求方明确终止本试点时，记录取消决定；取消不表示自动化闭环成功，也不将未执行节点改标为完成。
+
+**输入**
+
+- `REQUESTER_DECISION`：明确取消本需求的决定；来源为需求方 2026-10-10 的当前指示。
+
+**输出**
+
+- `CANCELLATION`：取消决定记录；去向为 `CANCELLED`。
 
 ## DEVELOP
 
@@ -789,6 +800,18 @@ flowchart TB
 **输出**
 
 - `ARCHIVE_MOVE`：把本文件整篇移入 `assets/archive/` 的动作；去向为流程外部的归档操作。
+
+## CANCELLED
+
+需求方于 2026-10-10 明确取消本自动流程试点，并要求 abort 后归档。本终态记录取消决定；取消不表示试点成功，未完成节点不得据此解释为已完成。
+
+**输入**
+
+- `CANCELLATION`：需求方明确取消决定；来源为需求方 2026-10-10 的当前指示。
+
+**输出**
+
+- 无。
 
 ## BLOCKED
 

@@ -42,11 +42,13 @@ flowchart TB
   GATE -->|是| DONE([交付评审报告])
   GATE -->|否| REWORK[补齐遗漏或修复报告偏差]
   REWORK --> ACCEPT
+  GATE -->|需求方终止未完成评审| CANCELLED([需求方明确终止])
 
   classDef todo fill:#f9d71c,stroke:#8a6d00,color:#000
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
   class START,READONLY,FINDINGS,TESTS,REPORT,ACCEPT,GATE,DONE,REWORK todo
+  class CANCELLED done
 ```
 
 ## START
@@ -145,6 +147,18 @@ flowchart TB
 **输出**
 
 - `REWORK_RESULT`：补正后的报告；去向为 `ACCEPT`。
+
+## CANCELLED
+
+需求方明确终止本评审流程，并要求将仍未完成的评审需求归档。此终态只记录流程终止，不表示指定评审报告已经产出或需求验收通过。
+
+**输入**
+
+- `CANCELLATION`：需求方明确终止决定；来源为需求方当前指示。
+
+**输出**
+
+- 无。
 
 ## DONE
 

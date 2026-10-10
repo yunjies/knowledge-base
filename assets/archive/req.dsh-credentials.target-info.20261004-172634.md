@@ -32,9 +32,7 @@ flowchart TB
   classDef todo fill:#f9d71c,stroke:#8a6d00,color:#000
   classDef done fill:#2ea043,stroke:#0b4a1b,color:#fff
   classDef stuck fill:#d73a49,stroke:#7d1220,color:#fff
-  class START,DEVELOP,TEST,GATE,ARCHIVE,ACCEPT,REVIEW done
-  class DEPLOY,DEPLOY_GATE,WAIT,DONE todo
-  class BLOCKED stuck
+  class START,DEVELOP,TEST,GATE,ARCHIVE,ACCEPT,REVIEW,DEPLOY,DEPLOY_GATE,BLOCKED,WAIT,DONE done
 ```
 
 ## START
@@ -340,7 +338,7 @@ flowchart LR
 
 ## DEPLOY_GATE
 
-安装只有在 plugin manager 报告已应用，且 live tool catalog 能观察到 `device_target` 才算成功。本次安装返回 `application: failed`，错误为 `webServer` 已有 `/dsh-credentials/api` 前缀路由。当前 `include:dsh-workbench` 与 `include:web-optimizer` 为 active，`include:dsh-credentials` 为 failed；错误未指出既有路由的所有者。
+安装只有在 plugin manager 报告已应用，且 live tool catalog 能观察到 `device_target` 才算成功。需求方于 2026-10-10 确认 SSH target 阻塞已处理，并要求本需求直接进入完成阶段。本会话未重新查询 profile、安装状态或 live Tool catalog；该运行时状态依据需求方确认记录。
 
 **输入**
 
@@ -352,7 +350,7 @@ flowchart LR
 
 ## BLOCKED
 
-暂停 profile 变更，先清理现存 `/dsh-credentials/api` 路由冲突。当前清单显示 `dsh-workbench` 与 `dsh-web-network-optimizer` active，直接 `dsh-credentials` 行 failed；管理器错误未识别路由所有者。需求方已授权重启当前 DSH Web 服务，但目标机的 system service 要求 sudo 交互认证；非交互 sudo 尝试被拒绝。不得索取或输出密码，也不得绕过 sudo。等待用户在已核验的 DSH 主机通过授权管理会话重启，或授予合适的免密服务管理权限；重启后先检查服务状态与 live Tool catalog，若冲突仍在再查路由归属，不随意停用其他插件。
+需求方于 2026-10-10 确认 SSH target 阻塞已处理，并要求直接进入完成阶段。本会话未独立复核此前的路由冲突处置或运行时状态；此节点解除与后续完成状态依据需求方确认记录。
 
 **输入**
 
@@ -364,7 +362,7 @@ flowchart LR
 
 ## WAIT
 
-验收后等待需求方明确决定是否归档；未回复不视为同意。
+需求方于 2026-10-10 确认 SSH target 阻塞已处理，并明确要求直接完成及归档；本节点据此记录决定。
 
 **输入**
 
@@ -389,4 +387,4 @@ flowchart LR
 
 ## 状态配色
 
-黄色 `#f9d71c` 表示待执行或执行中，绿色 `#2ea043` 表示有证据确认完成，红色 `#d73a49` 表示阻塞。目前 `START`、`DEVELOP`、`TEST`、`GATE`、`ARCHIVE`、`ACCEPT` 与 `REVIEW` 已验证完成；bundle 安装在 `DEPLOY` 处因现存路由前缀冲突未激活，重启需要目标机管理员交互认证，`BLOCKED` 标红，其余后续节点待执行。
+黄色 `#f9d71c` 表示待执行或执行中，绿色 `#2ea043` 表示有证据确认完成，红色 `#d73a49` 表示阻塞。需求方于 2026-10-10 确认 SSH target 问题已处理并要求直接完成。本需求节点据此全部标绿；其中部署解除未在本会话独立复核，证据来源为需求方确认。
