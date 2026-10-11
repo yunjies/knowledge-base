@@ -1,0 +1,4 @@
+project: dsh-settings-trusted-authority
+repository: dsh-settings-trusted-authority
+content_branch: duoduo
+description: Settings plugin that manages trusted authorities in DeepSeek Harness.
