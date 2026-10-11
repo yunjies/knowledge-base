@@ -1,0 +1,4 @@
+project: dsh-credentials
+repository: dsh-credentials
+content_branch: duoduo
+description: Credential management plugin for DeepSeek Harness profiles.
