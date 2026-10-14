@@ -339,13 +339,15 @@ flowchart TD
 
 ## SCAN_LIBRARY
 
-按媒体库的逻辑根路径只读遍历文件系统，识别媒体与字幕文件，建立索引并持久化扫描报告。
+按媒体库的逻辑根路径只读遍历文件系统，识别媒体与字幕文件，建立索引、更新每个媒体文件的本地 META 缓存并持久化扫描报告。
 
 遍历对每个根路径递归枚举文件，跳过相对路径中含点号前缀的目录与文件，仅收取媒体扩展名与字幕扩展名。媒体文件按时长识别为电影或剧集：文件名中匹配到季集标记的记为剧集并解析季号集号，否则记为电影并尝试解析年份；季号集号非正数时按无季集信息处理。字幕文件独立记为字幕类型。
 
-媒体实体按标题、媒体类型与来源逻辑根路径三者联合去重——同名文件落在两个逻辑根路径下是两条记录，不合并；同一逻辑根路径下的同名同类型文件共享一个媒体实体。标题由文件名去掉发布组尾部（季集标记、年份、分辨率、编码、来源标签）后归一化得到。文件记录保存相对路径、字节数与指纹（字节数与修改时间纳秒组成），指纹变化即视为文件变更。
+媒体实体按标题、媒体类型与来源逻辑根路径三者联合去重——同名文件落在两个逻辑根路径下是两条记录，不合并；同一逻辑根路径下的同名同类型文件共享一个媒体实体。标题由文件名去掉发布组尾部（季集标记、年份、分辨率、编码、来源标签）后归一化得到。文件记录保存相对路径、字节数与指纹（字节数与修改时间纳秒组成），指纹变化即视为文件变更。迁移 `0018_media_file_local_metadata_cache` 为每条 `MediaFile` 持久化本地 NFO 解析值；迁移 `0019_media_file_poster_cache` 增加 `local_poster_cache_key`，指向部署数据目录下持久化的本地 NAS 海报文件。每次扫描重新解析并整体替换 NFO 缓存与海报缓存；NFO 或海报候选被移除/不可用时清除对应值或 key。仅缓存 NAS 本地 poster 候选，不下载 Provider `poster_url` 或 NFO 远端 `thumb`。
 
-扫描报告记录状态与各类计数并在扫描后持久化；扫描失败时同样落一条失败报告，使失败可被后续查询读到。
+海报缓存文件默认写入 `/app/data/poster-cache`，可由 `HMP_POSTER_CACHE_DIR` 覆盖；覆盖目录是否持久化由运维保证。扫描在 DB 事务提交前暂存新图，回滚时删除暂存图并保留旧 key，提交后再清理旧图。若进程在 DB commit 后、旧图清理前崩溃，可能遗留无 DB 引用的 orphan 文件；它不破坏 DB 引用，但占用磁盘。目前没有自动 orphan sweep。
+
+扫描报告记录状态与各类计数并在扫描后持久化；扫描失败时同样落一条失败报告，使失败可被后续查询读到。实现见 [LibraryService](home-media-pilot/src/packages/application/library/service.py)、[local_metadata.py](home-media-pilot/src/packages/application/library/local_metadata.py)、[poster_cache.py](home-media-pilot/src/packages/application/library/poster_cache.py)、[MediaFile 模型](home-media-pilot/src/packages/infrastructure/db/models.py) 与迁移 [0018](home-media-pilot/src/migrations/versions/0018_media_file_local_metadata_cache.py) 和 [0019](home-media-pilot/src/migrations/versions/0019_media_file_poster_cache.py)；针对缓存重扫、跨会话持久性及扫描清理的用例见 [test_library_meta_cache.py](home-media-pilot/tests/src/packages/application/test_library_meta_cache.py) 与 [test_library_poster_cache.py](home-media-pilot/tests/src/packages/application/test_library_poster_cache.py)。
 
 ```mermaid
 flowchart TD
@@ -439,7 +441,7 @@ flowchart TD
 
 ### UPSERT_FILE
 
-按媒体实体与逻辑路径查找文件记录：不存在则新建并写入指纹，存在则更新字节数与指纹。
+按媒体实体与逻辑路径查找文件记录：不存在则新建并写入指纹与本地 META 缓存，存在则更新字节数、指纹并整体替换本地 META 缓存；该缓存包含 NFO 解析值及本地海报可用标记，不含图片字节。
 
 - 输入参数：
   - `media_entity`：媒体实体标识；来源为 `UPSERT_MEDIA`
@@ -496,7 +498,7 @@ flowchart TD
 
 按媒体库列出已索引的资源，默认只返回尚未匹配元数据的资源。
 
-资源按媒体库逻辑路径与匹配条件过滤，以唯一媒体实体计算 `total` 并通过 `limit`/`offset` 返回当前页；独立字幕实体不进入资源清单或总数。资源结果按已索引文件同目录、同 stem 的受支持扩展名精确关联字幕文件及索引/媒体库状态，不按标题猜测或覆盖语言后缀。资源中心提供每页数量选择和按媒体库隔离的页面生命周期缓存；切页复用已取回数据，显式刷新、媒体库刷新完成及候选保存后失效重取。字幕文件与状态仅显示于资源详情，界面不触发字幕搜索/下载；封面懒加载，URL 缺失或加载失败时显示本地占位。具体档位、筛选条件与视图细节从资源路由、服务和 `ResourcesView` 源码取回。资源是后续元数据匹配、字幕搜索、下载审批与调度列举的共同入口——这些流程都以资源身份而非自由文本为起点。
+资源按媒体库逻辑路径与匹配条件过滤，以唯一媒体实体计算 `total` 并通过 `limit`/`offset` 返回当前页；独立字幕实体不进入资源清单或总数。资源结果按已索引文件同目录、同 stem 的受支持扩展名精确关联字幕文件及索引/媒体库状态，不按标题猜测或覆盖语言后缀。资源中心提供每页数量选择和按媒体库隔离的页面生命周期缓存；切页复用已取回数据，显式刷新、媒体库刷新完成及候选保存后失效重取。字幕文件与状态仅显示于资源详情，界面不触发字幕搜索/下载；封面懒加载，URL 缺失或加载失败时显示本地占位。资源清单的本地 NFO 值由 `MediaFile.local_metadata_json` 提供；本地 NAS 海报使用 `MediaFile.local_poster_cache_key` 指向持久文件缓存。普通列表不探测 NAS sidecar，Provider 已存的非空值优先覆盖对应 NFO 字段。列表仅在适用时返回受控 poster 路由 URL，图片 API 从 poster-cache 读取图像，不回退读取 NAS。资源服务与路由实现见 [resources.py](home-media-pilot/src/packages/application/resources.py)、[poster_cache.py](home-media-pilot/src/packages/application/library/poster_cache.py) 和 [routes_phase4.py](home-media-pilot/src/apps/api/routes_phase4.py)；对应行为用例见 [test_library_meta_cache.py](home-media-pilot/tests/src/packages/application/test_library_meta_cache.py)、[test_library_poster_cache.py](home-media-pilot/tests/src/packages/application/test_library_poster_cache.py) 与 [test_phase4_resource_api.py](home-media-pilot/tests/src/apps/api/test_phase4_resource_api.py)。具体档位、筛选条件与视图细节从资源路由、服务和 `ResourcesView` 源码取回。资源是后续元数据匹配、字幕候选搜索与下载审批的共同入口；这些流程都以资源身份而非自由文本为起点。
 
 ```mermaid
 flowchart TD
@@ -507,7 +509,7 @@ flowchart TD
     FILTER_UNMATCHED -- 否 --> APPLY_LIMIT["按 offset/limit 分页并计算 total"]
     FILTER_UNMATCHED -- 是 --> APPLY_LIMIT
     APPLY_LIMIT --> GROUP_PATHS["按媒体聚合其文件路径"]
-    GROUP_PATHS --> READ_SIDECARS["读取本地 sidecar 并补齐展示字段"]
+    GROUP_PATHS --> READ_SIDECARS["读取本地 META 缓存并补齐展示字段"]
     READ_SIDECARS --> RES_DONE(["输出资源清单"])
     RES_ERROR --> RES_DONE
 ```
@@ -573,7 +575,7 @@ flowchart TD
 
 ### GROUP_PATHS
 
-把同一媒体的多个文件路径归并到一条资源上，使一个媒体只出现一次，并保留用于本地 sidecar 读取的首个文件路径。
+把同一媒体的多个文件路径归并到一条资源上，使一个媒体只出现一次，并保留其索引文件路径及对应的本地 META 缓存供后续组装。
 
 - 输入参数：
   - `resource_list`：资源清单；来源为 `APPLY_LIMIT`
@@ -582,13 +584,13 @@ flowchart TD
 
 ### READ_SIDECARS
 
-在输出资源清单前，按每条资源的首个已索引媒体路径只读探测本地 sidecar；逻辑根与物理路径由配置根及 `LogicalPathMapper` 解析和约束。该步骤只补充响应字段，不写入数据库，也不改写扫描得到的资源标题。
+在输出资源清单前，按每条资源关联的已索引文件记录，从数据库读取扫描时持久化的 NFO 缓存；此处不探测 NAS 上的 NFO 或海报文件，也不写数据库或改写扫描得到的资源标题。NFO 字段由扫描阶段使用 `LogicalPathMapper` 解析与约束后写入。图片 API 依 `local_poster_cache_key` 从本地 poster-cache 取图；缓存文件缺失时返回 404，不回退 NAS。
 
-NFO 读取候选为同目录媒体 stem `.nfo`，电影另可读 `movie.nfo`；文件大小超过上限、含 `DOCTYPE`、解析失败或越出逻辑根时忽略该 sidecar，异常不使资源清单失败。可识别的字段包括 `title`/`originaltitle`、`year`、`plot`/`overview` 与 `thumb`。本地封面按 `poster.*`、`<video-stem>-poster.*`、`folder.*` 的候选顺序探测；只接受允许的图片扩展名、大小范围内且经 `LogicalPathMapper` containment 校验的文件。没有合格 sidecar 时保留现有资源字段，不因单个 sidecar 失败中断清单。
+NFO 读取候选为同目录媒体 stem `.nfo`，电影另可读 `movie.nfo`；文件大小超过上限、含 `DOCTYPE`、解析失败或越出逻辑根时扫描缓存阶段忽略该 sidecar。可识别字段包括 `title`/`originaltitle`、`year`、`plot`/`overview` 与 `thumb`；`thumb` 作为 NFO 解析值保存，不下载其远端 URL。本地封面扫描探测 `poster.*`、`<video-stem>-poster.*`、`folder.*` 候选；只接受允许的图片扩展名、大小范围内且经 `LogicalPathMapper` containment 校验的文件，并将图像字节写入 poster-cache。Provider 远端 `poster_url` 不下载缓存。每次扫描以新解析结果替换原缓存；NFO 移除、不可解析或无合格海报时清除旧值/key。
 
 字幕关联只检查已索引媒体文件路径的同目录同 stem 候选：实现以媒体路径替换扩展名，逐一查询 `.ass`、`.srt`、`.ssa`、`.sub`、`.vtt` 路径，并把精确命中的已索引字幕记录附入资源的 `subtitle_files`。每项带字幕媒体 ID、路径、文件状态与媒体库状态；未命中时该列表为空。此契约不声明语言后缀字幕的匹配行为。
 
-展示元数据以已有 `metadata_json` 的非空 Provider 值为先，本地 NFO 只补其缺项；媒体实体已存年份优先于 NFO 年份。匹配状态为 `matched` 且已有有效 Provider `poster_url` 时保留 Provider 封面；否则本地封面存在时响应给出同源相对图片 URL。资源服务在响应前按 `HttpUrl` 校验已存 Provider 图片地址；无效值视为缺失并可回退到本地封面，具体实现见 [resources.py](home-media-pilot/src/packages/application/resources.py)。NFO 中的 `thumb` 作为 `nfo_poster_url` 元数据保留，不替代本地封面服务 URL。图片请求由后续同源路由按数据库中的媒体库/媒体关联及配置逻辑根重新核验，使用固定候选查找并再次做路径边界校验；文件不存在或校验失败返回 404，不接受路径参数或回显物理路径，响应 MIME 限于白名单。
+展示元数据以已有 `metadata_json` 的非空 Provider 值为先，本地 NFO 只补其缺项；媒体实体已存年份优先于 NFO 年份。匹配状态为 `matched` 且已有有效 Provider `poster_url` 时保留 Provider 封面；否则本地封面存在时响应给出同源相对图片 URL。资源服务在响应前按 `HttpUrl` 校验已存 Provider 图片地址；无效值视为缺失并可回退到本地封面，具体实现见 [resources.py](home-media-pilot/src/packages/application/resources.py)。NFO 中的 `thumb` 作为 `nfo_poster_url` 元数据保留，不替代本地封面服务 URL。图片 API 根据 DB 关联取得缓存 key 并经 poster-cache containment/key 校验读取文件；缓存文件不存在或校验失败返回 404，不接受路径参数或回显物理路径，响应 MIME 限于白名单。
 
 资源 API 的 `poster_url` 对本地封面返回根相对图片接口路径。资源视图为以单个 `/` 开头且非 `//` 的路径拼接 `apiBase`，绝对 Provider URL 保持原样；`apiBase` 取自 `VITE_API_BASE_URL`，未配置时为空，因此图片请求落在页面同源。前后端分离 origin 的构建若配置 API base，本地封面请求也会发往 API origin。资源详情中的封面图使用浏览器 `loading="lazy"`；封面 URL 缺失或图片触发加载错误时显示 HMP 占位图。实现见 [ResourcesView](home-media-pilot/src/frontend/src/views/ResourcesView.tsx) 与 [api.ts](home-media-pilot/src/frontend/src/views/api.ts)。
 
@@ -598,11 +600,11 @@ NFO 读取候选为同目录媒体 stem `.nfo`，电影另可读 `movie.nfo`；�
 
 本轮资源中心仅调整前端表格、排序/分页逻辑与样式及其测试，没有后端契约变化。离线单资源刮削验证使用既有测试 `tests/src/packages/application/test_phase4_resource_flow.py::test_library_scrape_only_creates_candidates_until_user_selects`：测试建立打开的匹配会话并断言候选已持久化（标题 Dune、Provider ID 123），不选择候选；临时媒体根仍为空，因此没有写入 sidecar。目标实例 `https://cyclonejoker.xyz:18081/` 未执行业务调用；只读读取 `/openapi.json` 时 TLS 证书链验证失败，因此目标实例上的刮削与在线 Provider 行为未验证。项目测试 `UV_CACHE_DIR=.uv-cache uv run pytest -q`、知识库 lint `UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q` 与 `npm run build` 均已通过。
 
-**【事实】**资源清单需保留索引与已匹配 Provider 元数据，同时让尚未入库的同目录 NFO 与本地封面能参与展示；本地文件可能损坏、越界、超限或在查询时消失。假设“展示元数据只能来自数据库”并非需求；假设“每个可读 sidecar 都可信”也不成立。若从目标重推，应在列表读取时临时读取受限 sidecar、按来源优先级合并响应字段，并用受控同源路由交付本地图片，而不把发现结果写成新的持久事实。
+**【事实】**资源清单必须保留索引标题与 Provider 已存的非空元数据优先级，同时能展示扫描时取回的本地 NFO 值与 NAS 本地海报；普通列表与图片 API 均不得重新探测 NAS。NFO 解析值保存在数据库，poster-cache 保存图片文件并由 `MediaFile.local_poster_cache_key` 引用。
 
-**【反题】**最强反对意见是资源列表路由允许的上限（见[资源列表路由](home-media-pilot/src/apps/api/routes_phase4.py)）可能使逐项 NFO 读取与图片目录探测把多次随机 NAS I/O 放进一次列表请求；慢或高延迟 NAS 可显著拖慢列表，甚至让每次刷新都重复付出成本。可证伪条件为：在相同 NAS 与并发配置下，对有 sidecar 的代表性目录做多轮配对测量；若启用 sidecar 的端到端列表 p95 延迟持续达到禁用 sidecar 基线的两倍及以上，且绝对延迟超过该部署预先声明的列表 SLO，则此逐请求读取设计失败，应重新评估有失效策略的缓存或批量读取。此条件是未来可执行的测量标准，不是已完成的性能实测。弃用代价主要落在资源列表调用方和维护者：需要迁移封面交付/响应契约，并处理缓存失效及旧展示数据；现有已验证测试覆盖功能、安全边界与异常回退，不证明 NAS 性能。
+**【反题】**最强反对意见是缓存只在扫描时更新，扫描之间 NAS sidecar 的修改或移除仍可能暂时显示旧 META/海报。可观察的证伪条件是扫描后 API 仍返回旧图、不能返回新图，或图片路由在缓存缺失时读取 NAS。弃用文件缓存需迁移缓存引用并处理已有文件；测试证明本地模拟下扫描替换/移除、源图丢失后仍可取图及 DB-only restore 缺图返回 404 并可重扫恢复，但未证明真实 NAS、部署文件系统或备份工具行为。
 
-**【裁决】**采用按需 read-through：数据库 `metadata_json` 与 Provider 封面在已有值时优先，本地 NFO 只补展示缺项，本地 sidecar 不持久化到 DB。长期看这避免本地资料覆盖已匹配值，也避免把会随文件增删变更的外部事实复制进 DB 后引入缓存新鲜度、失效与重扫一致性复杂度；封面通过同源受控路由返回。已知代价是列表读取增加文件系统 I/O，且 NFO 资料不会成为持久 metadata；达到上述可测失败条件时，由资源列表维护者偿还这项性能债，评估有明确失效/一致性语义的缓存或批量化读取，而不是因未实测成本否决当前功能方案。
+**【裁决】**扫描重新解析并整体替换 NFO 缓存与 NAS 本地海报文件缓存；列表从数据库取 NFO 值，图片 API 从 poster-cache 取图。Provider 远端 `poster_url` 与 NFO 远端 `thumb` 不下载缓存。缺缓存文件时返回 404，不回退 NAS；在 NAS 可用时重新扫描重建。poster-cache 是可重建派生文件，不纳入数据库备份；`/app/data` 持久卷承载数据库与默认缓存目录。DB commit 后清理旧图前进程崩溃可能遗留无引用 orphan 文件，目前没有自动 GC，运维需监控磁盘；若需回收空间，停服后按 [`deploy.md` 数据持久化说明](deploy.md#数据持久化)清理 poster-cache，再重启并扫描重建当前图像缓存。实现与用例见上文 `LibraryService`、`poster_cache.py`、资源路由及对应测试路径；全套测试从仓库根按 `tests/README.md` 的命令运行。未验证真实 NAS、部署卷权限、独立进程重启以及备份/恢复工具。
 
 - 输入参数：
   - `resources`：按媒体去重、含索引路径与已存字段的资源列表；来源为 `GROUP_PATHS`

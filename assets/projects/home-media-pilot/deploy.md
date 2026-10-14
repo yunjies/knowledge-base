@@ -57,7 +57,7 @@ LOGICAL_PATHS={"movies":"/media/movies","tv":"/media/tv","restricted":"/xoxo"}
 - `REGISTRY_OWNER`：发布工作流在运行期从仓库解析出的属主，也是 GHCR 镜像地址的属主段。工程仓库的实际属主是 `yunjies`，这里仍按 `<registry-owner>` 占位，因为该值随仓库别名与镜像地址而变，读者应从工作流的运行输出取当前值，不从文档抄。
 - `HOST_PORT`：宿主机上发布给 WebUI 的端口，容器内固定监听 8000。
 - `HOST_IP`：访问 WebUI 的实际地址（含端口）里的主机部分，即 `CORS_ORIGINS` 的取值来源。**键名用英文是硬约束**：环境变量名只接受字母、数字与下划线，写成中文的键不会被 Compose 读到，`${...:-默认值}` 会静默退回默认值 `localhost`，于是从别的机器访问时页面能打开但接口被拦——那正是这一项要防的失败。不设该变量时应用只允许 `http://localhost:5173` 与 `http://127.0.0.1:5173`。
-- `HOST_DATA_DIR`、`HOST_MEDIA_DIR`、`HOST_DOWNLOADS_DIR`、`HOST_RESTRICTED_DIR`：四项主机侧目录，分别挂到容器内的 `/app/data`、`/media`、`/downloads`、`/xoxo`。数据目录可写且必须持久化；`/media` 为配置媒体库物理根的读写挂载；`/downloads` 保持只读。`/xoxo` 挂载由 `HOST_RESTRICTED_MOUNT_MODE` 控制，默认 `ro`；只有 `/xoxo` 正作为启用媒体库根且 Jellyfin sidecar 必须导出到其中时，才显式设为 `rw`，否则保持 `ro` 或删除该卷挂载。修改挂载模式须重新部署容器；这只描述配置要求，不表示任何现有主机已变更。
+- `HOST_DATA_DIR`、`HOST_MEDIA_DIR`、`HOST_DOWNLOADS_DIR`、`HOST_RESTRICTED_DIR`：四项主机侧目录，分别挂到容器内的 `/app/data`、`/media`、`/downloads`、`/xoxo`。数据目录可写且必须持久化；其中包含 SQLite 数据库与默认 `/app/data/poster-cache` 海报缓存目录。`/media` 为配置媒体库物理根的读写挂载；`/downloads` 保持只读。`/xoxo` 挂载由 `HOST_RESTRICTED_MOUNT_MODE` 控制，默认 `ro`；只有 `/xoxo` 正作为启用媒体库根且 Jellyfin sidecar 必须导出到其中时，才显式设为 `rw`，否则保持 `ro` 或删除该卷挂载。修改挂载模式须重新部署容器；这只描述配置要求，不表示任何现有主机已变更。
 - `HOST_RESTRICTED_MOUNT_MODE`：`/xoxo` 卷的 Compose 挂载模式，只设为 `ro` 或 `rw`；未设置时默认为 `ro`。仅在 `/xoxo` 正配置为启用媒体库物理根且需要 sidecar 输出时设为 `rw`，不满足条件时保持 `ro` 或移除 `/xoxo` 卷。
 - `MEDIA_ROOT`、`DOWNLOADS_ROOT`、`LOGICAL_PATHS`：容器内的取值，`LOGICAL_PATHS` 是逻辑根名到容器内物理路径的映射，取值须是合法 JSON 对象，逻辑根解析出的物理路径须真实存在且为目录（解析规则见 `src/packages/infrastructure/library/roots.py`）。`MEDIA_ROOT` 与 `DOWNLOADS_ROOT` 的内容对任何主机都一样，不写进 `.env` 时取 YAML 里 `${变量:-默认值}` 的默认值，部署照样成立；`LOGICAL_PATHS` 没有默认值，必须在 `.env` 里给，否则 Compose 在插值处报错并停下。
 
@@ -124,7 +124,7 @@ YAML 里的 `${变量:-默认值}` 是 Compose 的变量插值语法：同目录
 
 首次部署与升级是同一条命令序列——镜像变没变由 `pull` 决定，不由操作者决定。
 
-改动数据库前先备份它。`home_media_pilot.db` 是唯一无法从镜像重建的资产（媒体文件在主机目录里，配置在库里，而库本身只此一份）：
+改动数据库前先备份它。数据库是权威状态；`poster-cache` 是从 NAS sidecar 派生、可重建的文件，不要求纳入数据库备份。数据库单独恢复而缓存图片文件缺失时，图片 API 返回 404 且不回退读取 NAS；须在 NAS 可用时对媒体库重新扫描以重建缓存。
 
 ```bash
 cp ${HOST_DATA_DIR}/home_media_pilot.db \
@@ -180,19 +180,21 @@ TMDb 适配器提供电影与 TV 搜索及详情端点；这是适配器的 API 
 
 ## 本地测试与未验证的现场面
 
-在 HMP 仓库克隆根按 [`tests/README.md`](home-media-pilot/tests/README.md) 执行 `UV_CACHE_DIR=.uv-cache uv run pytest -q`；全绿且退出码为 0 即通过。验证前端时在 `src/frontend` 执行 `npm run build`，TypeScript 检查及 Vite 构建均须成功且退出码为 0。若需复核本功能的离线覆盖，可运行：
+在 HMP 仓库克隆根按 [`tests/README.md`](home-media-pilot/tests/README.md) 执行 `UV_CACHE_DIR=.uv-cache uv run pytest -q`；全绿且退出码为 0 即通过。验证前端时在 `src/frontend` 执行 `npm run build`，TypeScript 检查及 Vite 构建均须成功且退出码为 0。
+
+复核 poster-cache 离线覆盖时，可运行 `UV_CACHE_DIR=.uv-cache uv run pytest -q tests/src/packages/application/test_library_meta_cache.py tests/src/packages/application/test_library_poster_cache.py tests/src/apps/api/test_phase4_resource_api.py`；这些用例用本地 SQLite 与临时目录模拟扫描、图片 API、DB-only 恢复和重扫。若需复核 TMDb Provider/API 离线覆盖，可运行：
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run pytest -q tests/src/packages/providers/metadata/test_tmdb.py tests/src/frontend/test_tmdb_credits.py tests/src/packages/application/test_metadata_exports.py tests/src/packages/frameworks/test_provider_stack_operations.py tests/src/packages/providers/test_provider_connection_status.py tests/src/apps/api/test_provider_api.py
 ```
 
-这些 Provider/API 用例使用 mock；它们不证明真实服务连接、真实资源匹配或部署环境文件写入。
+这些 Provider/API 用例使用 mock；它们不证明真实服务连接、真实资源匹配或部署环境文件写入。未验证面还包括目标部署实例的 TMDb 连接测试、真实资源扫描或刮削、sidecar 写入以及 Jellyfin 导入；现场核验须由获准的运营方按目标实例单独执行。
 
-未验证面包括目标部署实例的 TMDb 连接测试、真实资源扫描或刮削、sidecar 写入以及 Jellyfin 导入。未来现场核验须由获准的运营方按目标实例单独执行并记录结果；上述本地证据不可替代现场结果，也不构成部署完成声明。
+poster-cache 用例使用本地 SQLite 与临时目录，不证明真实 NAS、独立进程重启、生产部署卷权限或实际备份/恢复工具行为。DB commit 后进程崩溃导致 orphan 文件的情况未做崩溃注入验证；实现可能留下无引用文件，且没有自动 orphan sweep。当前文档不声明功能已部署。
 
 ## 数据持久化
 
-`DATABASE_URL` 指向 `/app/data/home_media_pilot.db`，必须把该路径挂到主机目录（上面的 `volumes` 首项即是，其主机侧取值来自 `.env` 的 `HOST_DATA_DIR`）。不挂则 sqlite 落在容器内，容器重建即清空——`up -d` 一次就把配置与扫描索引一起丢掉。
+`DATABASE_URL` 指向 `/app/data/home_media_pilot.db`，默认海报缓存位于 `/app/data/poster-cache`。Compose 将 `/app/data` 整体挂到 `HOST_DATA_DIR`，因此数据库与默认 poster-cache 均随该持久卷保留。`HMP_POSTER_CACHE_DIR` 可覆盖缓存目录；若设置，运维必须确保覆盖位置同样是持久存储。只备份数据库、不备份 poster-cache 是支持的策略：恢复后缺失的海报返回 404，NAS 可用时重新扫描重建。若进程在数据库提交新 key 后、清理旧海报文件前崩溃，可能留下无 DB 引用的 orphan 文件，占用磁盘；当前没有自动 orphan sweep。若 orphan 占用需要清理，先停止 Pilot，再清空实际 poster-cache 目录而保留数据库，重启后在 NAS 可用时重新扫描；重新扫描前缺失图像请求按 404 处理。
 
 `/downloads` 保持只读挂入；配置媒体库物理根的 `/media` 保持读写挂入。`/xoxo` 默认只读，只有它正作为启用媒体库根且 Jellyfin sidecar 必须导出到其中时，才将 `.env` 中的 `HOST_RESTRICTED_MOUNT_MODE` 设为 `rw`；否则保留 `ro` 或删除 `/xoxo` 卷。检查实际 Compose 插值且尚未部署时，可在 Compose 文件所在目录运行 `docker compose config`，确认渲染的 `pilot.volumes` 中 `/xoxo` 行为 `:ro`，或仅在上述授权用途下为 `:rw`，并确认 `/media:rw`、`/downloads:ro` 与 `MEDIA_READ_ONLY=false`、`DOWNLOADS_READ_ONLY=true`；不要据此声称已改变运行中的容器。每个 RW bind mount 都给予容器进程对整棵主机挂载树的 OS 写权限，应用的 sidecar 限制不是文件名级隔离。挂载模式修改后须重新部署容器；本文档不表示 live host 已改变。此部署说明不证明任何实例已更新；当前运行实例的 sidecar 写入、资源级刮削与 Jellyfin 导入均未在此验证。
 
