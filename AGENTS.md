@@ -84,22 +84,23 @@
 - `_meta/`：本知识库自有的执行规范与撰写样本——约束"应当怎么做"。它与 `.agents/skills/*/reference/` 的分工：**随 skill 分发的判据册**（文档撰写、流程类文档撰写、规则卡片撰写三册）以 `.agents/` 为权威源，`_meta/` 不复制其条款；**不随 skill 分发的**（agent 行为约束、测试分层与其样本）归此处。`_meta/notes/doc-writing-standards/samples/` 承载按项目交付形态划分的开发流程样本——开发项目时按该项目的交付形态装载对应的一份：交付形态是 DSH 插件的，读[源码落地为插件的流程](_meta/notes/doc-writing-standards/samples/source-to-plugin-flow.md)；交付形态是容器镜像的，读[源码落地为容器镜像的流程](_meta/notes/doc-writing-standards/samples/source-to-docker-flow.md)；建立或选层测试套件的，读[为项目建立测试套件的流程](_meta/notes/doc-writing-standards/samples/source-to-tests-flow.md)。`_meta/` 同时是 `_lint/` 判定知识库根的双标志之一，不得整体移除。
 - `.agents/skills/`：本工程自定义 SKILL 的落点，随工程入库，由 DSH 按工程根扫描装载。判据册三册在此承载权威源；`_lint/` 的守护面不含此目录——其承载的是随包分发的判据册，不属本知识库自己的文档。
 - `_lint/`：上述规范中**可机械判定**那部分的可执行守护，只读本知识库自己的文档。判据与运行方式见[「本知识库的文档守护」](#本知识库的文档守护)。
-- `assets/projects/`：被本知识库收录的项目，每个项目一个子目录；`main` 中每个目录仅承载 `project.yaml` 定义，包含项目 slug、克隆目录名、确认的内容分支与简短描述。实际项目流程文档、部署与使用说明及仓库克隆留在 descriptor 指定的已确认内容分支；项目 slug 与克隆目录名可不同。
+- `assets/projects/`：被本知识库收录的项目实际内容仅保存在 `duoduo` 内容分支；`main` 中该目录为空，仅保留 `.gitkeep`，不存项目子目录、定义、流程文档、部署说明或仓库克隆。每个项目一个子目录，项目流程文档为 `<项目>/feature-flow.md`，部署与使用说明为 `<项目>/deploy.md`，独立仓库克隆为 `<项目>/<repository>/`；项目 slug 与克隆目录名可不同。
 - `assets/inbox/`：需求收件箱——尚未完成的需求，一条需求一个流程记录。知识库 `main` 承载通用结构与方法，不承载单条 `req.*` 记录；活动与归档记录均须留在需求方确认的非 `main` 记录／内容分支。项目专属需求使用确认的项目内容分支，知识库范围的方法需求须另行确认知识库记录分支。命名、准入、分支及流程规则见该目录的 [README](assets/inbox/README.md)；新建需求从 [template.md](assets/inbox/template.md) 复制改名。需求结束后整篇移动至 `assets/archive/`，结论按其归属归位。
 - `assets/archive/`：已结束需求的过程归档区。完成归档须验收通过并获需求方明确同意，流程节点全绿且不含未使用的取消分支；仅实际取消时加入可达的 `CANCELLED` 终端，该终端标绿、其他节点状态保持真实。记录整篇从收件箱移动而非复制，并留在确认的非 `main` 记录／内容分支。准入与详细规则见该目录的 [README](assets/archive/README.md)。
 - `assets/notes/`：长期笔记区——需要跨会话留存的笔记。**准入判据两条同时成立才进**：**跨会话仍成立**（换个会话、换个 agent 读到仍为真且有用），且**没有别处可放**——工程本身（源码、配置、目录结构、命令输出）、`_meta/` 的执行规范、某个项目的流程文档、该目录自身都不承载它。**单个项目的流程与结构归 `assets/projects/<项目>/feature-flow.md`，此处不放它的副本**；能从工程自行取回的事实、执行规范、来历叙事（变更记录、提交历史、纪要存档）同样不进。一笔记一文件，文件不再需要时整篇删除，不做"已废弃"式留档；写入形态的展开见该目录的 [README](assets/notes/README.md)。
 
 ### 项目目录的阅读方式
 
-读一个被收录项目时按层进入，**不要越过层去猜路径**：
+读项目内容时先切到 `duoduo`，再按层进入，**不要越过层去猜路径**：
 
-1. **先读项目定义**：`assets/projects/<project>/project.yaml` 是项目 slug、克隆目录、内容分支与简短描述的唯一映射；`project` 必须与目录名一致，`repository` 是克隆目录名，`content_branch` 是确认的内容分支。
-2. **切到确认的内容分支再读项目文档**：从定义指定的内容分支读取 `assets/projects/<project>/feature-flow.md`，再按需要读取同目录 `deploy.md`。不要期待这些实际项目内容存在于 `main`，也不要用克隆里的 `README.md` 代替权威流程说明。
-3. **再进仓库克隆**：在该内容分支中按定义映射读取 `assets/projects/<project>/<repository>/`。研发事实（源码、配置、测试、构建输入）以克隆内为准，从克隆内取回，不在知识库中复述。
-4. **跑测试从克隆内出发**：入口与判据见克隆内的 `tests/README.md`，不依赖本知识库的 cwd 假设。
-5. **横切材料另找**：单个项目部署与使用事实归该项目内容分支的 `deploy.md`，不归 `assets/notes/`；notes 只放与任何单个项目都无关、又需跨会话留存的部署与运维事实。
+1. **先读项目索引**：`duoduo` 的 `assets/projects/README.md` 列出收录项目入口。
+2. **再读流程文档**：`assets/projects/<项目>/feature-flow.md` 是项目权威流程说明，给出已实现的主干、分支与失败出口；不要用克隆里的 `README.md` 代替它。
+3. **部署与使用查同目录文档**：`assets/projects/<项目>/deploy.md` 承载项目部署、使用、验证与排查事实。
+4. **再进仓库克隆**：`assets/projects/<项目>/<repository>/` 是项目独立仓库克隆，其内部布局由项目决定；研发事实以克隆内为准。
+5. **跑测试从克隆内出发**：入口与判据见克隆内的 `tests/README.md`。
+6. **横切材料另找**：单个项目部署与使用事实归项目的 `deploy.md`，不归 `assets/notes/`。
 
-多项目时的取法：`<project>` 是知识库收录名，`<repository>` 是克隆目录名，两者允许不同；所有克隆路径均通过 descriptor 映射取得。
+`duoduo/assets/projects/` 下每个子目录是一个项目；收录目录名与项目仓库克隆目录名不必相同。
 
 ### `assets/projects/` 下任何改动的强制入口
 
@@ -143,4 +144,4 @@
 
 跑法与判据见 [_lint/README.md](_lint/README.md)，命令是 `UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q`，判据为全绿且退出码 0。缓存与解释器落在仓库内，因为宿主机的默认缓存目录只读。
 
-**守护面限于知识库自己的文档**：`_meta/`、根 `AGENTS.md` 与各 `README.md`、`assets/notes/`、`assets/inbox/` 与 `assets/archive/` 下的需求文档，以及 `assets/projects/*/project.yaml` 项目定义。main 的 `_lint` 仅验证项目定义；实际项目文档由确认的内容分支上的测试套件守护。**项目克隆内的文档不在 main 的守护面内**——其布局由该项目决定，本知识库不评判。各目录的守护判据见 [_lint/README.md](_lint/README.md) 的门禁对照表。
+**守护面限于知识库自己的文档**：`_meta/`、根 `AGENTS.md` 与各 `README.md`、`assets/notes/`、`assets/inbox/` 与 `assets/archive/` 下的需求文档。`main` 的 `_lint` 同时守护 `assets/projects/` 为空这一分支边界；项目实际内容由 `duoduo` 内容分支上的守护检查。**项目克隆内的文档不在 main 的守护面内**——其布局由该项目决定，本知识库不评判。各目录的守护判据见 [_lint/README.md](_lint/README.md) 的门禁对照表。
