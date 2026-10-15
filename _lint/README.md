@@ -1,6 +1,6 @@
 # 知识库文档守护
 
-本目录把[文档撰写规范](../.agents/skills/doc-writing/reference/doc-writing-constraints.md)与[流程类文档撰写规范](../.agents/skills/process-doc-writing/reference/process-doc-writing-constraints.md)中**可机械判定**的那部分落成可执行的检查。规范说应当怎么写，这里判定是否真的这么写了；两者分开存放，改判据不动用例，改用例也不悄悄重定义判据。main 的项目守护只校验 `project.yaml` 定义并确保项目目录不含实际内容；项目部署文档与内容断言由确认的内容分支守护。
+本目录把[文档撰写规范](../.agents/skills/doc-writing/reference/doc-writing-constraints.md)与[流程类文档撰写规范](../.agents/skills/process-doc-writing/reference/process-doc-writing-constraints.md)中**可机械判定**的那部分落成可执行的检查。规范说应当怎么写，这里判定是否真的这么写了；两者分开存放，改判据不动用例，改用例也不悄悄重定义判据。main 的项目守护要求 `assets/projects/` 在文件系统和 Git 索引中都只含空的 `.gitkeep` 占位文件；项目实际内容留在 `duoduo` 内容分支。
 
 ## 主流程图
 
@@ -523,7 +523,7 @@ UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q
 | `test_doc_placement.py` | `assets/notes/` 准入判据的「没有别处可放」一条：笔记不得描述某个项目克隆内部 |
 | `test_inbox_provenance.py` | `assets/inbox/` 前置数据块的键齐备与 `prompt` 留档 |
 | `test_inbox_contract.py` | 需求文件名的四段式、以及每张图内每个节点都带三档状态之一 |
-| `test_project_definitions.py` | main 只校验 `project.yaml` 元数据、repository 单目录映射、非 main 内容分支、项目目录 slug 与定义一致，并拒绝项目目录中的 flow/deploy 文档、克隆和其他项目内容；不要求 main 存在实际项目文档。部署文档与项目内容断言留在确认的内容分支，由内容侧 lint 负责 |
+| `test_projects_main_boundary.py` | main 的 `assets/projects/` 文件系统与 Git 索引只允许空的 `.gitkeep` 占位文件，拒绝项目定义、项目子目录、文档、克隆与其他文件；项目实际内容留在 `duoduo`，由内容侧守护检查 |
 | `test_suite_integrity.py` | 门禁花名册与守卫钩子 |
 
 ## 判断项：本目录**不**判定的部分
