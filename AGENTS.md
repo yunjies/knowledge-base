@@ -2,13 +2,13 @@
 
 ## 知识库装载
 
-本工程的知识库文档不是全部默认装载，装载由场景触发：任务执行时按需装载（如 [agent-constraints.md](_meta/agent-constraints.md)——agent 执行规范；环境部署与验收任务读[deploy.md](_meta/deploy.md)）。新增知识库文档时，在其对应生产场景的指令处补指路，否则该文档对未被告知的会话不存在。
+本工程的知识库文档不是全部默认装载，装载由场景触发：任务执行时按需装载（如 [agent-constraints.md](knowledge-repository/agent-constraints.md)——agent 执行规范；环境部署与验收任务读[deploy.md](knowledge-repository/deploy.md)）。新增知识库文档时，在其对应生产场景的指令处补指路，否则该文档对未被告知的会话不存在。
 
-多视角独立审核并维护跨轮事实记录时，读[审核事实记录的循环流程](_meta/notes/audit-record-loop-flow.md)。
+多视角独立审核并维护跨轮事实记录时，读[审核事实记录的循环流程](knowledge-repository/notes/audit-record-loop-flow.md)。
 
-对指定工程源码开展多维独立评审并闭环修复时，按需读取[源码评审与证据闭环指南](_meta/review-guide.md)；协调者须先明确指南要求的工程根目录、源码范围与报告落点，再启动评审。
+对指定工程源码开展多维独立评审并闭环修复时，按需读取[源码评审与证据闭环指南](knowledge-repository/review-guide.md)；协调者须先明确指南要求的工程根目录、源码范围与报告落点，再启动评审。
 
-审阅技能文档的 LLM 第一读者可读性时，可参考[审核报告样本](_meta/notes/doc-writing-standards/samples/llm-readability-audit-sample.md)；该样本的测试结果与未修复项不代表 knowledge-base 当前状态。
+审阅技能文档的 LLM 第一读者可读性时，可参考[审核报告样本](knowledge-repository/notes/doc-writing-standards/samples/llm-readability-audit-sample.md)；该样本的测试结果与未修复项不代表 knowledge-base 当前状态。
 
 ## 可达执行路径验证
 
@@ -16,7 +16,7 @@
 
 ## 约束
 
-执行期禁令（含不写注释、长期价值优先于成本、不以历史来源替代当前状态、不转述可自行取回的事实）的判据在 [Agent 行为约束](_meta/agent-constraints.md)，本节只承载其中的工程落地细则。
+执行期禁令（含不写注释、长期价值优先于成本、不以历史来源替代当前状态、不转述可自行取回的事实）的判据在 [Agent 行为约束](knowledge-repository/agent-constraints.md)，本节只承载其中的工程落地细则。
 
 - **决策与审核一律走第一性原理 + 辩证**：方案取舍、审核出具的 PASS/FAIL，都必须从可验证的最小事实推出，并写出最强反题。以"现状如此""既有代码这么写""惯例如此""保持一致性"为由的结论一律不成立。展开与判据见[「决策与审核准则」](#决策与审核准则)。
 - **动笔前先装载目标目录的边界声明**：向本知识库任一目录新增或改写文档前，先读该目录的边界判据（该目录的 `README`，或本文件「目录结构」中该目录的条目），据其"什么进这里／什么不进这里"判断这条信息是否归这一层。**判据归层，形态归撰写规范**——`_lint/` 只判后者，全绿不说明位置正确（见[「本知识库的文档守护」](#本知识库的文档守护)的守护面说明）。写入后才判断归层，代价是整篇迁移一层。
@@ -81,13 +81,13 @@
 
 ## 目录结构
 
-- `_meta/`：本知识库自有的执行规范与撰写样本——约束"应当怎么做"。它与 `.agents/skills/*/reference/` 的分工：**随 skill 分发的判据册**（文档撰写、流程类文档撰写、规则卡片撰写三册）以 `.agents/` 为权威源，`_meta/` 不复制其条款；**不随 skill 分发的**（agent 行为约束、测试分层与其样本）归此处。`_meta/notes/doc-writing-standards/samples/` 承载按项目交付形态划分的开发流程样本——开发项目时按该项目的交付形态装载对应的一份：交付形态是 DSH 插件的，读[源码落地为插件的流程](_meta/notes/doc-writing-standards/samples/source-to-plugin-flow.md)；交付形态是容器镜像的，读[源码落地为容器镜像的流程](_meta/notes/doc-writing-standards/samples/source-to-docker-flow.md)；建立或选层测试套件的，读[为项目建立测试套件的流程](_meta/notes/doc-writing-standards/samples/source-to-tests-flow.md)。`_meta/` 同时是 `_lint/` 判定知识库根的双标志之一，不得整体移除。
+- `knowledge-repository/`：本知识库自有的执行规范与撰写样本——约束"应当怎么做"。它与 `.agents/skills/*/reference/` 的分工：**随 skill 分发的判据册**（文档撰写、流程类文档撰写、规则卡片撰写三册）以 `.agents/` 为权威源，`knowledge-repository/` 不复制其条款；**不随 skill 分发的**（agent 行为约束、测试分层与其样本）归此处。`knowledge-repository/notes/doc-writing-standards/samples/` 承载按项目交付形态划分的开发流程样本——开发项目时按该项目的交付形态装载对应的一份：交付形态是 DSH 插件的，读[源码落地为插件的流程](knowledge-repository/notes/doc-writing-standards/samples/source-to-plugin-flow.md)；交付形态是容器镜像的，读[源码落地为容器镜像的流程](knowledge-repository/notes/doc-writing-standards/samples/source-to-docker-flow.md)；建立或选层测试套件的，读[为项目建立测试套件的流程](knowledge-repository/notes/doc-writing-standards/samples/source-to-tests-flow.md)。`knowledge-repository/` 同时是 `_lint/` 判定知识库根的双标志之一，不得整体移除。
 - `.agents/skills/`：本工程自定义 SKILL 的落点，随工程入库，由 DSH 按工程根扫描装载。判据册三册在此承载权威源；`_lint/` 的守护面不含此目录——其承载的是随包分发的判据册，不属本知识库自己的文档。
 - `_lint/`：上述规范中**可机械判定**那部分的可执行守护，只读本知识库自己的文档。判据与运行方式见[「本知识库的文档守护」](#本知识库的文档守护)。
 - `assets/projects/`：被本知识库收录的项目实际内容仅保存在 `duoduo` 内容分支；`main` 中该目录为空，仅保留 `.gitkeep`，不存项目子目录、定义、流程文档、部署说明或仓库克隆。每个项目一个子目录，项目流程文档为 `<项目>/feature-flow.md`，部署与使用说明为 `<项目>/deploy.md`，独立仓库克隆为 `<项目>/<repository>/`；项目 slug 与克隆目录名可不同。
 - `assets/inbox/`：需求收件箱——尚未完成的需求，一条需求一个流程记录。知识库 `main` 承载通用结构与方法，不承载单条 `req.*` 记录；活动与归档记录均须留在需求方确认的非 `main` 记录／内容分支。项目专属需求使用确认的项目内容分支，知识库范围的方法需求须另行确认知识库记录分支。命名、准入、分支及流程规则见该目录的 [README](assets/inbox/README.md)；新建需求从 [template.md](assets/inbox/template.md) 复制改名。需求结束后整篇移动至 `assets/archive/`，结论按其归属归位。
 - `assets/archive/`：已结束需求的过程归档区。完成归档须验收通过并获需求方明确同意，流程节点全绿且不含未使用的取消分支；仅实际取消时加入可达的 `CANCELLED` 终端，该终端标绿、其他节点状态保持真实。记录整篇从收件箱移动而非复制，并留在确认的非 `main` 记录／内容分支。准入与详细规则见该目录的 [README](assets/archive/README.md)。
-- `assets/notes/`：长期笔记区——需要跨会话留存的笔记。**准入判据两条同时成立才进**：**跨会话仍成立**（换个会话、换个 agent 读到仍为真且有用），且**没有别处可放**——工程本身（源码、配置、目录结构、命令输出）、`_meta/` 的执行规范、某个项目的流程文档、该目录自身都不承载它。**单个项目的流程与结构归 `assets/projects/<项目>/feature-flow.md`，此处不放它的副本**；能从工程自行取回的事实、执行规范、来历叙事（变更记录、提交历史、纪要存档）同样不进。一笔记一文件，文件不再需要时整篇删除，不做"已废弃"式留档；写入形态的展开见该目录的 [README](assets/notes/README.md)。
+- `assets/notes/`：长期笔记区——需要跨会话留存的笔记。**准入判据两条同时成立才进**：**跨会话仍成立**（换个会话、换个 agent 读到仍为真且有用），且**没有别处可放**——工程本身（源码、配置、目录结构、命令输出）、`knowledge-repository/` 的执行规范、某个项目的流程文档、该目录自身都不承载它。**单个项目的流程与结构归 `assets/projects/<项目>/feature-flow.md`，此处不放它的副本**；能从工程自行取回的事实、执行规范、来历叙事（变更记录、提交历史、纪要存档）同样不进。一笔记一文件，文件不再需要时整篇删除，不做"已废弃"式留档；写入形态的展开见该目录的 [README](assets/notes/README.md)。
 
 ### 项目目录的阅读方式
 
@@ -123,7 +123,7 @@
 
 - **开发**：产出功能改动本身，只改 `target` 指到的内容；越界即停下报出，不自行扩大范围。
 - **测试**：写覆盖本需求行为的用例并跑测，判据为全绿且退出码 0。失败**回开发阶段重做**（不撤销工作区改动），已写下的用例保留作证据；测试阶段不改产品代码。
-- **归档**：把既成事实落档——属某个项目的写进该项目 `assets/projects/<项目>/feature-flow.md`，不属任何项目的按 `_meta/`、判据册、各目录 README 的归属落位。只写已验证的事实，未验证的写进「未验证面」。
+- **归档**：把既成事实落档——属某个项目的写进该项目 `assets/projects/<项目>/feature-flow.md`，不属任何项目的按 `knowledge-repository/`、判据册、各目录 README 的归属落位。只写已验证的事实，未验证的写进「未验证面」。
 - **验收**：比对全部 diff 与 `prompt`，两问都成立才通过——需求要求的每处改动都做了，且没有需求外的东西。不通过回开发阶段，验收阶段不自行修正。
 
 **完成归档须经需求方同意；实际取消方可走取消归档**：完成需求须验收通过并获需求方明确同意，流程图不得含未使用的取消分支且所有节点全绿；仅需求方实际取消时，才加入可达的 `CANCELLED` 终端，该终端标绿、其他节点状态保持真实。两种情况都将整份流程文档从 `assets/inbox/` 移入 `assets/archive/`，不得复制；`req.*` 记录须始终留在需求方确认的非 `main` 记录／内容分支，项目需求使用确认的项目内容分支，知识库方法需求另行确认记录分支。`main` 承载知识库通用结构与方法，不承载单条需求记录。详细规则见 [需求收件箱 README](assets/inbox/README.md) 与 [归档 README](assets/archive/README.md)。
@@ -132,7 +132,7 @@
 
 目标：证明"改动是对的"，并证到该有的强度。三层测试各自回答不同问题，**按改动性质选层，不要一律跑全量**——选层是为了用对工具，不是为了少跑；**不得以"成本高"为由降层或跳过**（见[「成本条款」](#成本条款短期成本无否决权)）。
 
-分层判据、各层准入条件、镜像规则、套件可信性守卫与反证纪律，见[为项目建立测试套件的流程](_meta/notes/doc-writing-standards/samples/source-to-tests-flow.md)。**分层不按被测对象的技术栈**：判据是"这条证据是否只有真实环境才提供"。按需装载的子项——改动落在静态面、需要真实进程或浏览器、需要外部服务或容器运行时时，分别读[静态面](_meta/notes/doc-writing-standards/samples/tests-static-layer.md)、[活体面](_meta/notes/doc-writing-standards/samples/tests-live-layer.md)、[外部面](_meta/notes/doc-writing-standards/samples/tests-external-layer.md)的判据。
+分层判据、各层准入条件、镜像规则、套件可信性守卫与反证纪律，见[为项目建立测试套件的流程](knowledge-repository/notes/doc-writing-standards/samples/source-to-tests-flow.md)。**分层不按被测对象的技术栈**：判据是"这条证据是否只有真实环境才提供"。按需装载的子项——改动落在静态面、需要真实进程或浏览器、需要外部服务或容器运行时时，分别读[静态面](knowledge-repository/notes/doc-writing-standards/samples/tests-static-layer.md)、[活体面](knowledge-repository/notes/doc-writing-standards/samples/tests-live-layer.md)、[外部面](knowledge-repository/notes/doc-writing-standards/samples/tests-external-layer.md)的判据。
 
 被收录项目的测试套件**只维护一套**，且不在本知识库内：它随项目源码存放于项目自己的仓库克隆内（`assets/projects/<项目>/<repository>/tests/`），目录规范按镜像规则——该仓库 `src/` 下每一类代码、配置与产物在测试树中有一处对应节点。跑法与判据取回自该项目的 `tests/README.md`，命令按项目自身技术栈与已声明入口执行，判据为全绿且退出码 0。新增项目测试写在项目内，不落回知识库。
 
@@ -144,4 +144,4 @@
 
 跑法与判据见 [_lint/README.md](_lint/README.md)，命令是 `UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q`，判据为全绿且退出码 0。缓存与解释器落在仓库内，因为宿主机的默认缓存目录只读。
 
-**守护面限于知识库自己的文档**：`_meta/`、根 `AGENTS.md` 与各 `README.md`、`assets/notes/`、`assets/inbox/` 与 `assets/archive/` 下的需求文档。`main` 的 `_lint` 同时守护 `assets/projects/` 为空这一分支边界；项目实际内容由 `duoduo` 内容分支上的守护检查。**项目克隆内的文档不在 main 的守护面内**——其布局由该项目决定，本知识库不评判。各目录的守护判据见 [_lint/README.md](_lint/README.md) 的门禁对照表。
+**守护面限于知识库自己的文档**：`knowledge-repository/`、根 `AGENTS.md` 与各 `README.md`、`assets/notes/`、`assets/inbox/` 与 `assets/archive/` 下的需求文档。`main` 的 `_lint` 同时守护 `assets/projects/` 为空这一分支边界；项目实际内容由 `duoduo` 内容分支上的守护检查。**项目克隆内的文档不在 main 的守护面内**——其布局由该项目决定，本知识库不评判。各目录的守护判据见 [_lint/README.md](_lint/README.md) 的门禁对照表。

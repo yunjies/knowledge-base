@@ -137,7 +137,7 @@ prompt:
 
 - **已完成或明确取消的需求**：完成的需求须验收通过并获需求方明确同意，完成流程图不得含未执行的取消节点或未走过的取消分支，且所有节点均标绿；实际取消的需求须由需求方明确取消，并在其自身流程图中加入可达的显式 `CANCELLED` 终端。取消态只将该终端标绿，其余节点保留真实状态，不得伪标为绿色。两者均按[assets/archive/](../archive/README.md)整篇移动归档。本目录不留已结束需求，避免它与真实待办混淆。
 - **单个项目的已实现流程**：归 `assets/projects/<项目>/feature-flow.md`。一条需求**做完之后**其流程归那里；**在做期间**它归本目录，因为此时它还不是该项目的既成事实。
-- **能从工程自行取回的事实**：取值、清单、命令输出、目录结构。写取回路径，不写取值（判据见 [_meta/agent-constraints.md](../../_meta/agent-constraints.md)）。
+- **能从工程自行取回的事实**：取值、清单、命令输出、目录结构。写取回路径，不写取值（判据见 [knowledge-repository/agent-constraints.md](../../knowledge-repository/agent-constraints.md)）。
 - **执行规范**：约束 agent 应当如何行动的条目归对应规范册。本目录只承载需求，不承载规范。
 
 ## 与 `assets/notes/` 的分界

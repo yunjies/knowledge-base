@@ -66,7 +66,7 @@ flowchart TB
 
 ### DISC_WALK
 
-从知识库根递归遍历。仓库根由 `_harness/paths.py` 的 `repository_root()` 向上取最近一个同时带 `_meta/` 与 `assets/` 的祖先目录得到——两个标志缺一不可，只认其一都会误命中无关祖先。
+从知识库根递归遍历。仓库根由 `_harness/paths.py` 的 `repository_root()` 向上取最近一个同时带 `knowledge-repository/` 与 `assets/` 的祖先目录得到——两个标志缺一不可，只认其一都会误命中无关祖先。
 
 **输入**
 
