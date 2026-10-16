@@ -23,7 +23,7 @@ whenToUse: 撰写、修订或审阅文档正文的行文表述时，不限文档
 | 判定某处事实该不该写 | [D-02](reference/doc-writing-constraints.md#d-02-正文不转述可自行取回的事实)（自行取回）、[D-03](reference/doc-writing-constraints.md#d-03-正文不引用外部记录的条目)（外部记录条目） |
 | 校验操作事实（命令/配置/默认值） | [D-19](reference/doc-writing-constraints.md#d-19-操作性断言须以运行为证据) |
 | 定该事实的承载层级 | [D-20](reference/doc-writing-constraints.md#d-20-正文陈述须落在其应有的层级) |
-| 造句（拆分、术语、链接、物理行、Markdown 语法） | [D-16](reference/doc-writing-constraints.md#d-16-一句只承载一条指令或一组紧密条件)、[D-17](reference/doc-writing-constraints.md#d-17-同一概念在全文只用一个术语)、[D-01](reference/doc-writing-constraints.md#d-01-指路性引用必须可跳转)、[D-21](reference/doc-writing-constraints.md#d-21-正文段落保持一个物理行)、[D-25](reference/doc-writing-constraints.md#d-25-正文以-markdown-语法撰写) |
+| 造句（拆分、术语、链接、物理行、Markdown 语法、加粗） | [D-16](reference/doc-writing-constraints.md#d-16-一句只承载一条指令或一组紧密条件)、[D-17](reference/doc-writing-constraints.md#d-17-同一概念在全文只用一个术语)、[D-27](reference/doc-writing-constraints.md#d-27-不自造术语新术语须带承重定义)、[D-28](reference/doc-writing-constraints.md#d-28-术语的词面与指称前后一致改名须全量同步)、[D-01](reference/doc-writing-constraints.md#d-01-指路性引用必须可跳转)、[D-21](reference/doc-writing-constraints.md#d-21-正文段落保持一个物理行)、[D-25](reference/doc-writing-constraints.md#d-25-正文以-markdown-语法撰写)、[D-26](reference/doc-writing-constraints.md#d-26-加粗仅用于规则名称关键判定词与术语首次出现) |
 | 按体裁补必备项 | [D-14](reference/doc-writing-constraints.md#d-14-指令类文档须写明行为护栏与范围限制)（指令类）、[D-22](reference/doc-writing-constraints.md#d-22-决策记录须承载反论代价与可观察验收面)（决策记录）、[D-23](reference/doc-writing-constraints.md#d-23-面向使用者的说明须承载消费方约定)、[D-24](reference/doc-writing-constraints.md#d-24-操作手册须含前置条件与可观察验证) |
 | 删改前核对 | [D-09](reference/doc-writing-constraints.md#d-09-修订正文不得改变命题)、[D-10](reference/doc-writing-constraints.md#d-10-正文写到保住承重约定为止)、[D-11](reference/doc-writing-constraints.md#d-11-精简正文不得以篇幅为判据) |
 
@@ -39,13 +39,14 @@ whenToUse: 撰写、修订或审阅文档正文的行文表述时，不限文档
    - 不采纳仅该次会话可解析的坐标（`D-05`）。
    - 只保留读者无法从对象本身重建的契约（`D-06`）。
 5. **补归属**：未决事项写成含承担者与动作的标记，估计值写成含来源标记的观测值或可判定的失败边界（`D-07`）。
-6. **统一词面**：全文行文语言一致（`D-08`）；同一概念只用一个术语（`D-17`）。
+6. **统一词面**：全文行文语言一致（`D-08`）；同一概念只用一个术语（`D-17`）；不自造术语，引入新术语须就地写出承重定义（`D-27`）；同一词面只指一个概念，术语改名后其全部出现处——含各处标签、正文规则与示例——同步更新，不留旧称（`D-28`）。
 7. **造句**：逐项落笔——
    - 指令点明执行主体与动作（`D-15`）。
    - 一句只承载一条指令或一组紧密条件，并列达三项及以上改用列表（`D-16`）。
    - 指路性引用一律写成 Markdown 链接（`D-01`）。
    - 每个段落写成不换行的单个物理行（`D-21`）。
    - 全部结构一律用 Markdown 原生语法承载，正文内不出现 HTML 标签（`D-25`）；`<b>`／`<strong>` 改 `**…**`，`<br>` 改空行分段，`<table>` 改管道表格，`<div>` 一类容器改列表或取消包裹。
+   - 加粗只落三类词面——规则名称、关键判定词、术语首次出现，不用作普通强调或修饰（`D-26`）。
 8. **判承重**：逐句追问该句被谁依赖、依赖哪一类，以保住承重约定为下限、以删除推理叙述与重复装饰为上限（`D-10`）；会脱离上下文单独展示的片段须自足（`D-12`）。
 9. **述用途**：面向使用者陈述某对象用途时，落在读者能用它做什么、何时选用与主要代价，不叙述其内部角色、注册项或组件构成（`D-18`）。
 10. **按体裁补必备项**：先认体裁，再补该体裁的必备项——

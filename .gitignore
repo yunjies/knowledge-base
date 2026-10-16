@@ -126,3 +126,4 @@ assets/**/data/
 .restart/
 .shots/
 assets/**/.shots/
+.sessions/

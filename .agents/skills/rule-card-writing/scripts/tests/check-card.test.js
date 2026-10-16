@@ -13,8 +13,7 @@ function specText() {
   return fs.readFileSync(SPEC, 'utf8')
 }
 
-// 工程内真实卡片文档：校验器必须有真素材可跑，否则测试只是自说自话。
-const REAL = path.join(__dirname, '..', '..', '..', '..', '..', 'knowledge-repository', 'agent-constraints.md')
+const REAL = path.join(__dirname, '..', '..', '..', '..', '..', '.agents', 'knowledge-repository', 'agent-constraints.md')
 
 const MINIMAL = [
   '# 示例册',

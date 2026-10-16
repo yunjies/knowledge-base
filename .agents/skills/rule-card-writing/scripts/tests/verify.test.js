@@ -94,9 +94,14 @@ test('SKILL.md：路由表必须存在，且其「字段→条目编号」与实
   assert.equal(
     result.inconclusive,
     null,
-    '路由表是 LLM 在取回规范前唯一可见的定位入口：它若不在 SKILL.md，读者须先打开 700 余行全文才能知道该读哪里',
+    '路由表是 LLM 在取回规范前唯一可见的定位入口：它若不在 SKILL.md，读者须先打开规范全文才能知道该读哪里',
   )
-  assert.ok(result.pairs.length >= 17, '路由表须覆盖 §0.1 登记的每个字段：' + JSON.stringify(result.pairs))
+  const registered = verify.checkForward(spec).registered
+  assert.deepEqual(
+    [...new Set(result.pairs.map(([field]) => field))].sort(),
+    [...new Set(registered)].sort(),
+    '路由表须覆盖 §0.1 登记的每个字段，一处缺口即一条取不到定位的字段：' + JSON.stringify(result.pairs),
+  )
   assert.deepEqual(
     result.missing,
     [],

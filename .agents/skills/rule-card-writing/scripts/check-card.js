@@ -6,6 +6,8 @@ const fs = require('node:fs')
 const SPEC = path.join(__dirname, '..', 'reference', 'rule-card-writing-constraints.md')
 
 const MARK = {
+  templateFrom: '## 1. 规则卡片模板',
+  templateTo: '## 2. 字段规则定义',
   fieldTableFrom: '### 0.1 标签 ↔ 字段对照',
   fieldTableTo: '### 0.2 子标签登记',
   subTagTableFrom: '### 0.2 子标签登记',
@@ -33,14 +35,13 @@ function isHeader(row) {
   return cells.length > 0 && HEADING_CELLS.has(cells[0].trim())
 }
 
-// 以下四项均从规范文本提取，规范改动后自行跟随，不在代码里复制判据。
 function fieldRows(specText) {
   const block = section(specText, MARK.fieldTableFrom, MARK.fieldTableTo)
   const out = []
   for (const row of block.split('\n')) {
     if (!/^\s*\|/.test(row) || isDivider(row) || isHeader(row)) continue
     const m = /^\s*\|\s*\d+\s*\|\s*`([^`]+)`\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|/.exec(row)
-    if (m) out.push({ field: m[1], label: m[2], labelText: m[2], required: m[4].trim() })
+    if (m) out.push({ field: m[1], label: m[2], required: m[4].trim() })
   }
   return out
 }
@@ -69,12 +70,36 @@ function docDefLabels(specText) {
   return out
 }
 
+function titleSlots(specText) {
+  const block = section(specText, MARK.templateFrom, MARK.templateTo)
+  const fence = /```[a-z]*\n([\s\S]*?)```/.exec(block)
+  if (!fence) throw new Error('规范中找不到模板代码围栏：' + MARK.templateFrom)
+  const line = fence[1].split('\n')[0]
+  return new Set([...line.matchAll(/\{\{([a-z_]+)\}\}/g)].map((m) => m[1]))
+}
+
+function atLeastOneGroups(specText) {
+  const block = section(specText, MARK.subTagTableFrom, MARK.subTagTableTo)
+  const groups = new Map()
+  for (const row of block.split('\n')) {
+    if (!/^\s*\|/.test(row) || isDivider(row) || isHeader(row)) continue
+    const cells = row.split('|').slice(1, -1)
+    if (cells.length < 5) continue
+    const pm = /`([^`]+)`/.exec(cells[0])
+    const nm = /`([^`]+)`/.exec(cells[1])
+    if (!pm || !nm) continue
+    const m = /与「([^」]+)」至少出现其一/.exec(cells[4])
+    if (!m) continue
+    if (!groups.has(pm[1])) groups.set(pm[1], new Set([nm[1]]))
+    groups.get(pm[1]).add(m[1])
+  }
+  return groups
+}
+
 function idPattern(specText) {
   const m = /正则 `\^\[A-Z\][^`]*`/.exec(specText)
   return m ? m[0].replace(/^正则 `|`$/g, '') : null
 }
-
-// ---- 卡片解析：标题行 + 属性行 + 缩进 2 空格的子标签行 ----
 
 function parseCards(docText) {
   const lines = docText.split('\n')
@@ -95,7 +120,6 @@ function parseCards(docText) {
         cur = { id: idm[1], title: (idm[2] || '').trim(), line: idx + 1, level: h[1].length, fields: [], subTags: [] }
         cards.push(cur)
       } else {
-        // 形如 `<短码>-<数字> <标题>` 但 id 不合规者仍是一张卡片：不识别它会让该卡片被静默跳过。
         const near = /^([A-Za-z][A-Za-z0-9]{0,15}-[0-9]{1,4})(?:\s+(.*))?$/.exec(body)
         cur = near
           ? { id: near[1], title: (near[2] || '').trim(), line: idx + 1, level: h[1].length, fields: [], subTags: [] }
@@ -121,7 +145,10 @@ function checkCards(docText, specText) {
   const subs = new Set(subTagNames(specText))
   const docLabels = new Set(docDefLabels(specText))
   const idRe = new RegExp(idPattern(specText))
+  const titleOnly = titleSlots(specText)
+  const atLeastOne = atLeastOneGroups(specText)
   const labelToField = new Map(fields.map((f) => [f.label, f.field]))
+  const fieldToLabel = new Map(fields.map((f) => [f.field, f.label]))
   const problems = []
   const cards = parseCards(docText)
 
@@ -142,8 +169,7 @@ function checkCards(docText, specText) {
 
     for (const f of fields) {
       if (f.required !== '必填') continue
-      if (f.label === '标题行首段' || f.label === '标题行次段') continue
-      if (f.label.startsWith('——')) continue
+      if (titleOnly.has(f.field)) continue
       if (!present.has(f.label)) problems.push(`行${card.line} 卡片 ${card.id}：缺少必填字段「${f.label}」`)
     }
 
@@ -151,10 +177,10 @@ function checkCards(docText, specText) {
       if (!subs.has(st.name)) problems.push(`行${st.line} 卡片 ${card.id}：子标签「${st.name}」不在 §0.2 的登记内`)
     }
 
-    const hasRule = card.subTags.some((s) => s.name === '判定口径')
-    const hasSemantic = card.subTags.some((s) => s.name === '语义判据')
-    if (present.has('产出物') && !hasRule && !hasSemantic) {
-      problems.push(`行${card.line} 卡片 ${card.id}：「判定口径」与「语义判据」须至少出现其一`)
+    for (const [parent, names] of atLeastOne) {
+      if (!present.has(fieldToLabel.get(parent) || parent)) continue
+      if ([...names].some((n) => card.subTags.some((s) => s.name === n))) continue
+      problems.push(`行${card.line} 卡片 ${card.id}：「${[...names].join('」与「')}」须至少出现其一`)
     }
   }
 
@@ -190,4 +216,4 @@ if (require.main === module) {
   process.exit(result.problems.length === 0 ? 0 : 1)
 }
 
-module.exports = { SPEC, section, fieldRows, subTagNames, docDefLabels, idPattern, parseCards, checkCards }
+module.exports = { SPEC, fieldRows, subTagNames, idPattern, parseCards, checkCards }
