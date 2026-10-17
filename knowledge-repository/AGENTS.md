@@ -9,6 +9,7 @@
 | 文档 | 性质 | 何时读 |
 |---|---|---|
 | [directory-structure.md](directory-structure.md) | 地图 | 需要确认工程根目录、资产目录边界或项目内容阅读顺序时；根 [AGENTS.md](../AGENTS.md)「目录结构」节的完整内容以此为准 |
+| [domain-agent-architecture.md](domain-agent-architecture.md) | 架构提案 | 设计领域知识库配置、领域 agent 工具边界或 KB agent 编排时 |
 | [agent-constraints.md](agent-constraints.md) | 入口指针 | 查找跨项目执行期禁令时；判据源在 [.agents/knowledge-repository/agent-constraints.md](../.agents/knowledge-repository/agent-constraints.md) |
 | [deploy.md](deploy.md) | 操作手册 | 执行知识库环境部署、验收与排查时 |
 | [notes/audit-record-loop-flow.md](notes/audit-record-loop-flow.md) | 入口指针 | 执行多视角审核循环时；权威流程见 [.agents/knowledge-repository/notes/audit-record-loop-flow.md](../.agents/knowledge-repository/notes/audit-record-loop-flow.md) |

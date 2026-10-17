@@ -74,9 +74,9 @@
 
 ## 目录结构
 
-工程根目录树、各目录职责、资产边界与项目内容阅读顺序见[知识库目录结构](knowledge-repository/directory-structure.md)，本节的目录地图以该文为准。跨项目通用规则与审核流程归 `.agents/knowledge-repository/`；随技能分发的判据册归 `.agents/skills/`；本知识库专有的边界、方法和操作说明归 `knowledge-repository/`。
+工程根目录树、各目录职责、资产边界与领域知识及项目源码阅读顺序见[知识库目录结构](knowledge-repository/directory-structure.md)，本节的目录地图以该文为准。跨项目通用规则与审核流程归 `.agents/knowledge-repository/`；随技能分发的判据册归 `.agents/skills/`；本知识库专有的边界、方法和操作说明归 `knowledge-repository/`。
 
-任何创建、修改、删除或移动 `assets/projects/<项目>/` 文件的需求，都必须先在 `assets/inbox/` 新建或续办需求，并按[需求流程模板](assets/inbox/template.md)执行。项目内容路径与分支阅读顺序见[知识库目录结构](knowledge-repository/directory-structure.md)；需求准入和归档规则见[收件箱 README](assets/inbox/README.md)与[归档 README](assets/archive/README.md)。Git 提交、同步或 GitHub 操作按[版本管理技能](.agents/skills/version-management/SKILL.md)执行。
+任何创建、修改、删除或移动 `assets/projects/<repository>/` 文件的需求，都必须先在 `assets/inbox/` 新建或续办需求，并按[需求流程模板](assets/inbox/template.md)执行。项目源码仓库路径与领域知识阅读顺序见[知识库目录结构](knowledge-repository/directory-structure.md)；需求准入和归档规则见[收件箱 README](assets/inbox/README.md)与[归档 README](assets/archive/README.md)。Git 提交、同步或 GitHub 操作按[版本管理技能](.agents/skills/version-management/SKILL.md)执行。
 
 ### 部署与验收
 

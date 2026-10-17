@@ -27,10 +27,10 @@ SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".
 
 # A project's own checkout is another repository with its own history and
 # conventions; the knowledge base states that its internal layout is the
-# project's decision. Its documents are therefore read here, never judged: the
-# flow document the knowledge base owns sits *beside* the checkout, not inside
-# it, and that is the one this suite checks.
-CHECKOUT_PATTERN = re.compile(r"^assets/projects/[^/]+/[^/]+/")
+# project's decision. Each direct child of assets/projects is a checkout, so
+# documents inside it are read here, never judged. Domain-owned flow documents
+# live outside that source tree under assets/domains/.
+CHECKOUT_PATTERN = re.compile(r"^assets/projects/[^/]+/")
 
 # A document is a flow document when it carries a mermaid graph. The criterion is
 # the graph, not the directory: a sample and a project's flow document are the

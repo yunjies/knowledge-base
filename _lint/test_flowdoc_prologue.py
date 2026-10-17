@@ -135,7 +135,7 @@ def test_the_opening_rule_tells_the_two_forms_apart() -> None:
     broken rule and still pass.
     """
     accepted = {
-        "plain": ("assets/projects/x/feature-flow.md", ["# T", "", "目标段落。"]),
+        "plain": ("assets/domains/x/flows/feature-flow.md", ["# T", "", "目标段落。"]),
         "inbox block then paragraph": (
             "assets/inbox/req.x-20260101-000000.md",
             ["# T", "", "```yaml", "target: x", "```", "", "目标段落。", "", "## 主流程"],
@@ -149,8 +149,8 @@ def test_the_opening_rule_tells_the_two_forms_apart() -> None:
         ),
     }
     rejected = {
-        "graph first": ("assets/projects/x/feature-flow.md", ["# T", "", "```mermaid", "flowchart TB", "```"]),
-        "list first": ("assets/projects/x/feature-flow.md", ["# T", "", "- 一项"]),
+        "graph first": ("assets/domains/x/flows/feature-flow.md", ["# T", "", "```mermaid", "flowchart TB", "```"]),
+        "list first": ("assets/domains/x/flows/feature-flow.md", ["# T", "", "- 一项"]),
         "inbox block with no paragraph": (
             "assets/inbox/req.x-20260101-000000.md",
             ["# T", "", "```yaml", "target: x", "```"],
