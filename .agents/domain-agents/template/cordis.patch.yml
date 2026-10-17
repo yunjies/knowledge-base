@@ -1,0 +1,13 @@
+- insert:
+    - id: preset-knowledge-base-operations
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: knowledge-base-operations
+        name: 知识库操作
+        description: 通过脚本和结构化数据查询、维护知识库操作规范并推进 review 流程
+        plugins:
+          - id: domain-knowledge-tools
+            name: '@local/domain-agent-scaffold'
+            config:
+              domainId: knowledge-base-operations
+              domainRoot: .agents/domain-agents/instance

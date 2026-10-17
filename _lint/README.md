@@ -521,6 +521,7 @@ UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q
 | `test_flowdoc_params.py` | F07 参数栏齐备与边两侧落地 |
 | `test_flowdoc_blueprint.py` | F08 蓝图绘自身图、内层节点成章 |
 | `test_doc_placement.py` | `assets/notes/` 准入判据的「没有别处可放」一条：笔记不得描述某个项目克隆内部 |
+| `test_domain_agent_scaffold.py` | 领域 agent `AGENTS.md`、规范卡片、JSON Schema 与实例数据交叉引用、宿主工具登记/生命周期、每个 JavaScript 文件语法和 runtime/registration/engine Node 行为测试 |
 | `test_inbox_provenance.py` | `assets/inbox/` 前置数据块的键齐备与 `prompt` 留档 |
 | `test_inbox_contract.py` | 需求文件名的四段式、以及每张图内每个节点都带三档状态之一 |
 | `test_projects_main_boundary.py` | main 的 `assets/projects/` 文件系统与 Git 索引只允许空的 `.gitkeep` 占位文件，拒绝项目定义、项目子目录、文档、克隆与其他文件；项目实际内容留在 `duoduo`，由内容侧守护检查 |
@@ -537,4 +538,5 @@ UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q
 - **D03 的非编号引用**：不写成编号的引用（「见上一次讨论」）不可寻址，无法与普通行文区分。
 - **分层判据的未点名情形**：一条用自然语言复述了某个项目流程、却未点名任何克隆内路径的笔记，与「恰好提到该项目的正常跨会话笔记」在文本上无从区分。`test_doc_placement.py` 只覆盖点名了路径的那一类。**这条缺口是有代价的**：本目录的全绿只说明已被覆盖的那一类成立，不说明 `assets/notes/` 里没有放错层的文档——判层靠人读该目录 README 的准入判据。
 - **D04–D09**：陈述当前状态、不采纳会话视角、不承载推导、不确定表述有边界、语言不混用、修订不变命题——全部是语义判据，本目录不涉。
+- **领域 agent 的运行语义**：门禁校验脚手架结构、工具声明、数据 schema 与流程状态图；不会在 Harness Host 中安装或调用插件，也不能证明运行时权限、文件系统隔离和 reviewer 输出真实正确。具体实例须另行验收宿主工具行为。
 - **C01–C05**：agent 执行约束，与文档形态无关。
