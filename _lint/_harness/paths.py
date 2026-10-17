@@ -7,7 +7,7 @@ that nobody registers would otherwise be invisible to every check, which is the
 failure this suite exists to prevent.
 
 Two roots are refused rather than guessed at. `repository_root()` requires both
-`_meta/` and `assets/`, because either marker alone matches directories that are
+`knowledge-repository/` and `assets/`, because either marker alone matches directories that are
 not this repository.
 """
 
@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".uv-cache", ".agents"}
+SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".uv-cache", ".agents", ".worktrees", ".sessions"}
 
 # `.agents/` is not a layer of this knowledge base: it is a skill distribution
 # root, scanned by the harness rather than read as knowledge-base documentation.
@@ -41,7 +41,7 @@ MERMAID_FENCE = re.compile(r"^```mermaid\s*$", re.MULTILINE)
 def repository_root() -> Path:
     """Return the knowledge base this suite inspects."""
     for candidate in Path(__file__).resolve().parents:
-        if (candidate / "_meta").is_dir() and (candidate / "assets").is_dir():
+        if (candidate / "knowledge-repository").is_dir() and (candidate / "assets").is_dir():
             return candidate
     raise RuntimeError(f"could not locate the knowledge base above {__file__}")
 
@@ -104,13 +104,13 @@ def instruction_documents() -> list[Path]:
     """The documents that instruct an agent.
 
     Three sets, discovered rather than listed. The root file; every README,
-    since a README is read as instructions too; and everything under `_meta/`,
+    since a README is read as instructions too; and everything under `knowledge-repository/`,
     which holds the execution and writing constraints themselves. Leaving
-    `_meta/` out was a real gap: the very document that states the counting rule
+    `knowledge-repository/` out was a real gap: the very document that states the counting rule
     was the one document the counting rule never read.
     """
     root = repository_root()
-    meta = root / "_meta"
+    meta = root / "knowledge-repository"
     out = [root / "AGENTS.md"]
     out.extend(path for path in all_documents() if path.name == "README.md")
     out.extend(path for path in all_documents() if meta in path.parents)

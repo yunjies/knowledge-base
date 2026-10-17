@@ -2,7 +2,7 @@
 
 This directory holds the **executable** form of the writing constraints: F01-F08
 for flow documents, and the mechanically decidable part of D02/D03 for prose.
-The constraints themselves live in `_meta/`; this is their enforcer, and the two
+The constraints themselves live in `knowledge-repository/`; this is their enforcer, and the two
 are deliberately separate files so that changing a rule does not require
 touching a test and changing a test does not silently redefine a rule.
 

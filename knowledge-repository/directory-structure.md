@@ -1,0 +1,62 @@
+# 知识库目录结构
+
+本文档承载 knowledge-base 工程根的目录地图：目录树列出顶层条目与主要子目录，各目录作用说明其归属边界及读者应进入的文档层级。根 [AGENTS.md](../AGENTS.md) 的「目录结构」节以本文为准；任何影响目录边界或项目内容路径的改动，都须先核对本图并同步更新。
+
+## 目录树
+
+工程根即本仓库工作树，路径均相对工程根解析。
+
+```
+knowledge-base-main/
+├── AGENTS.md
+├── .gitignore
+├── .gitmodules
+├── .agents/
+│   ├── knowledge-repository/
+│   └── skills/
+├── .github/
+│   └── workflows/
+├── _lint/
+│   ├── _harness/
+│   └── hooks/
+├── assets/
+│   ├── archive/
+│   ├── inbox/
+│   ├── notes/
+│   └── projects/
+└── knowledge-repository/
+    └── notes/
+        └── doc-writing-standards/
+            └── samples/
+```
+
+目录树不列本机缓存、会话临时目录或其他可重建产物。根目录中若新增持久化内容，应同步更新本树及下文职责说明。`_lint/` 的 `test_projects_main_boundary.py` 守护 `main` 上的 `assets/projects/` 边界：目录和 Git 索引仅保留空的 `.gitkeep`；项目实际内容不进入知识库 `main`。
+
+## 各目录作用
+
+- `.agents/knowledge-repository/` — 跨项目可复用的规则、审核视角与流程；索引为其 `AGENTS.md`。它与工程根 `knowledge-repository/` 按复用范围分工，同一条规则只在一个权威位置承载。
+- `.agents/skills/` — 随本工程分发的自定义技能、规范册与技能工具；技能入口为各自的 `SKILL.md`。规范册以此处为权威源，`_lint/` 不扫描此目录。
+- `.github/workflows/` — 仓库自动化工作流；文档守护工作流调用 `_lint/` 的运行入口。
+- `_lint/` — 本知识库文档的可执行守护，包含判据实现、测试与共享辅助模块；运行方式和守护范围见 [_lint/README.md](../_lint/README.md)。
+- `assets/` — 需求记录、归档、长期笔记与项目内容的容器。不同子目录的准入边界分别由各自的 `README.md` 声明。
+- `assets/inbox/` — 尚待推进的需求，一条需求一份流程记录；骨架见 [template.md](../assets/inbox/template.md)。单条需求记录须保留在需求方确认的非 `main` 记录或内容分支，不进入知识库 `main`。
+- `assets/archive/` — 已完成并获需求方同意归档，或经需求方明确取消的需求过程记录；从收件箱整篇移动，不复制。结论按其所属层级归位，不把过程记录当作结论副本。
+- `assets/notes/` — 跨会话仍成立且没有更适合承载位置的长期笔记；项目专属流程、可由工程自行取回的事实、执行规范与过程归档均不进入此处。
+- `assets/projects/` — 本知识库收录项目实际内容的承载位置。`main` 仅保留空的 `.gitkeep`；实际项目内容留在 `duoduo` 内容分支。独立仓库克隆目录由 `.gitmodules` 声明，项目目录名与克隆目录名可以不同。
+- `knowledge-repository/` — 本知识库专有的执行规范、边界、操作手册与样本；索引及内容装载时机见 [AGENTS.md](AGENTS.md)。
+- `knowledge-repository/notes/` — 场景流程与撰写样本；按实际任务读取对应文档，不因进入目录而全量装载。
+
+## 项目内容的阅读顺序
+
+读取 `duoduo` 内容分支上的项目时，先读该分支的 `assets/projects/README.md`，按它给出的项目入口逐层进入；不要跳层猜路径。
+
+1. 读项目索引，确认项目目录名与仓库克隆目录名。
+2. 读 `<项目>/feature-flow.md`，获取项目已实现流程、分支和失败出口；不要以克隆内的 `README.md` 代替它。
+3. 读同目录的 `<项目>/deploy.md`，获取部署、使用、验证与排查说明。
+4. 再进入 `<项目>/<repository>/` 克隆目录；源码事实以克隆内为准。
+5. 从克隆内 `tests/README.md` 取得测试入口和判据。
+6. 单项目部署与使用事实写入该项目的 `deploy.md`，不复制到 `assets/notes/`。
+
+## 项目目录的改动入口
+
+任何创建、修改、删除或移动 `assets/projects/<项目>/` 下文件的需求，都必须先在 `assets/inbox/` 新建或续办需求，再按[需求流程模板](../assets/inbox/template.md)执行；不得先改后补，小改、源码与项目文档改动均适用。项目分支确认、开发与验收步骤只由需求模板承载；Git 提交、同步或 GitHub 操作按[版本管理技能](../.agents/skills/version-management/SKILL.md)执行。

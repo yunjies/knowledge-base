@@ -15,7 +15,7 @@ root="$(git rev-parse --show-toplevel)"
 # nothing else cannot have broken a document rule, and running the guard anyway
 # would train the author to reach for `--no-verify`.
 changed="$(git diff --cached --name-only --diff-filter=ACMR)"
-if ! grep -qE '^(AGENTS\.md|_lint/|_meta/|assets/.*\.md$)' <<<"$changed"; then
+if ! grep -qE '^(AGENTS\.md|_lint/|knowledge-repository/|assets/.*\.md$)' <<<"$changed"; then
   exit 0
 fi
 

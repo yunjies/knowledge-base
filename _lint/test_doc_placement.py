@@ -122,6 +122,17 @@ ORDINARY_NOTES = [
 ]
 
 
+def test_temporary_markdown_trees_are_pruned(tmp_path) -> None:
+    """Session and worktree documents are temporary, not knowledge-base material."""
+    discovered = []
+    for dirname in (".worktrees", ".sessions"):
+        directory = tmp_path / dirname / "nested"
+        directory.mkdir(parents=True)
+        (directory / "temporary.md").write_text("temporary", encoding="utf-8")
+        discovered.extend(paths._walk(tmp_path))
+    assert discovered == []
+
+
 def test_the_placement_rule_fires_and_spares() -> None:
     """The rule must catch its historical sample and leave ordinary notes alone.
 

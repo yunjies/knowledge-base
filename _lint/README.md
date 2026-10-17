@@ -1,6 +1,6 @@
 # 知识库文档守护
 
-本目录把[文档撰写规范](../.agents/skills/doc-writing/reference/doc-writing-constraints.md)与[流程类文档撰写规范](../.agents/skills/process-doc-writing/reference/process-doc-writing-constraints.md)中**可机械判定**的那部分落成可执行的检查。规范说应当怎么写，这里判定是否真的这么写了；两者分开存放，改判据不动用例，改用例也不悄悄重定义判据。
+本目录把[文档撰写规范](../.agents/skills/doc-writing/reference/doc-writing-constraints.md)与[流程类文档撰写规范](../.agents/skills/process-doc-writing/reference/process-doc-writing-constraints.md)中**可机械判定**的那部分落成可执行的检查。规范说应当怎么写，这里判定是否真的这么写了；两者分开存放，改判据不动用例，改用例也不悄悄重定义判据。main 的项目守护要求 `assets/projects/` 在文件系统和 Git 索引中都只含空的 `.gitkeep` 占位文件；项目实际内容留在 `duoduo` 内容分支。
 
 ## 主流程图
 
@@ -49,7 +49,7 @@ flowchart TB
 ```mermaid
 flowchart TB
   DISC_WALK["递归遍历知识库"]
-  DISC_PRUNE["剪枝：.git、虚拟环境、node_modules"]
+  DISC_PRUNE["剪枝：构建/临时目录与项目克隆"]
   DISC_SCOPE["排除项目克隆内的文档"]
   DISC_SPLIT{"文档是否含 mermaid 主流程图？"}
   DISC_FLOW["流程类：受 F01–F08 判据"]
@@ -66,7 +66,7 @@ flowchart TB
 
 ### DISC_WALK
 
-从知识库根递归遍历。仓库根由 `_harness/paths.py` 的 `repository_root()` 向上取最近一个同时带 `_meta/` 与 `assets/` 的祖先目录得到——两个标志缺一不可，只认其一都会误命中无关祖先。
+从知识库根递归遍历。仓库根由 `_harness/paths.py` 的 `repository_root()` 向上取最近一个同时带 `knowledge-repository/` 与 `assets/` 的祖先目录得到——两个标志缺一不可，只认其一都会误命中无关祖先。
 
 **输入**
 
@@ -79,7 +79,7 @@ flowchart TB
 
 ### DISC_PRUNE
 
-在**下降之前**剪枝，而不是枚举之后再过滤。一个虚拟环境或 `node_modules` 树被递归展开的成本是分钟级，而它们的名字在进入前就已可知。**项目克隆同样在此处下降前剪枝**（`_harness/paths.py` 的 `_walk` 在压栈前判 `is_inside_checkout`）：克隆内部的目录项在本机文件系统上占全树的大头，枚举后过滤意味着每次发现都要把它们全部 stat 一遍，而全套件对发现函数的调用次数即 `_lint` 内 `paths.` 发现调用的出现次数（`grep -c "paths\." _lint/test_*.py` 现取现得）；下降前剪枝把单次发现从分钟级降到亚秒级，产出文档集与过滤方式逐字相同（两边各为 `all_documents()` 的全部成员，逐路径比对一致）。
+在**下降之前**剪枝，而不是枚举之后再过滤。一个虚拟环境或 `node_modules` 树被递归展开的成本是分钟级，而它们的名字在进入前就已可知。**项目克隆同样在此处下降前剪枝**（`_harness/paths.py` 的 `_walk` 在压栈前判 `is_inside_checkout`）：克隆内部的目录项在本机文件系统上占全树的大头，枚举后过滤意味着每次发现都要把它们全部 stat 一遍，而全套件对发现函数的调用次数即 `_lint` 内 `paths.` 发现调用的出现次数（`grep -c "paths\." _lint/test_*.py` 现取现得）；下降前剪枝把单次发现从分钟级降到亚秒级，产出文档集与过滤方式逐字相同（两边各为 `all_documents()` 的全部成员，逐路径比对一致）。`_harness/paths.py` 的 `_walk` 还排除 `.worktrees/` 与 `.sessions/`；它们分别是临时工作树与按会话隔离的临时产物，不属于知识库内容。
 
 **输入**
 
@@ -523,7 +523,7 @@ UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q
 | `test_doc_placement.py` | `assets/notes/` 准入判据的「没有别处可放」一条：笔记不得描述某个项目克隆内部 |
 | `test_inbox_provenance.py` | `assets/inbox/` 前置数据块的键齐备与 `prompt` 留档 |
 | `test_inbox_contract.py` | 需求文件名的四段式、以及每张图内每个节点都带三档状态之一 |
-| `test_project_deploy_docs.py` | 各项目的 `deploy.md` 在位且非空、笔记已迁移、命令入口在克隆内存在、不含凭据与内网地址、`.env` 样板的键名合法且与 Compose 的 `${}` 引用双向对应 |
+| `test_projects_main_boundary.py` | main 的 `assets/projects/` 文件系统与 Git 索引只允许空的 `.gitkeep` 占位文件，拒绝项目定义、项目子目录、文档、克隆与其他文件；项目实际内容留在 `duoduo`，由内容侧守护检查 |
 | `test_suite_integrity.py` | 门禁花名册与守卫钩子 |
 
 ## 判断项：本目录**不**判定的部分

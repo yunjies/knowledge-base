@@ -127,10 +127,12 @@ function checkUnjudged(text) {
   if (rows.length !== 1) {
     return { rows, missing: [], reason: '"不参与判定"行必须恰有一行，实得 ' + rows.length + ' 行' }
   }
-  const decorative = ['title', 'layer', 'overridable', 'why']
+  const sourced = new Set()
+  for (const row of allowedRows(text)) for (const name of backticked(row)) sourced.add(name)
+  const decorative = cardFields(text).filter((f) => !sourced.has(f))
   const row = rows[0]
   const missing = decorative.filter((f) => !row.includes('`' + f + '`'))
-  return { rows, missing, reason: missing.length ? '装饰性字段未落在"不参与判定"行内' : null }
+  return { rows, missing, reason: missing.length ? '未参与判定的字段未落在"不参与判定"行内' : null }
 }
 
 function checkSubTags(text) {
@@ -275,20 +277,8 @@ function verify(file) {
 module.exports = {
   SPEC,
   SKILL,
-  MARK,
-  UNJUDGED,
   readSpec,
   section,
-  tableRows,
-  isDivider,
-  isHeader,
-  backticked,
-  cardFields,
-  subTagFields,
-  docDefItems,
-  truthRows,
-  unjudgedRow,
-  allowedRows,
   truthSourceFields,
   checkForward,
   checkBackward,
@@ -299,7 +289,6 @@ module.exports = {
   checkLinks,
   checkSkillLinks,
   checkRoutingTable,
-  headingSlugs,
   verify,
 }
 
