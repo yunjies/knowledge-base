@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "domainId": "knowledge-base-operations",
+  "workflowId": "audit-record-loop",
+  "startStage": "baseline",
+  "terminalStage": "complete",
+  "stages": [
+    {
+      "id": "baseline",
+      "resourceIds": ["audit-flow"],
+      "requiredResultFields": ["baselineRef"],
+      "fieldConstraints": {"baselineRef": {"type": "string", "minLength": 1}},
+      "transitions": {"ready": "dispatch", "blocked": "halt"}
+    },
+    {
+      "id": "dispatch",
+      "resourceIds": ["audit-flow", "audit-perspectives"],
+      "delegationOwner": "session-leader",
+      "requiredResultFields": ["perspectiveSet", "reviewerResults"],
+      "fieldConstraints": {"perspectiveSet": {"type": "array", "minItems": 1}, "reviewerResults": {"type": "array", "minItems": 1}},
+      "transitions": {"complete": "merge", "blocked": "halt"}
+    },
+    {
+      "id": "merge",
+      "resourceIds": ["audit-flow"],
+      "requiredResultFields": ["mergedFindings"],
+      "fieldConstraints": {"mergedFindings": {"type": "array"}},
+      "transitions": {"complete": "history-gate", "blocked": "halt"}
+    },
+    {
+      "id": "history-gate",
+      "resourceIds": ["audit-flow"],
+      "requiredResultFields": [],
+      "fieldConstraints": {},
+      "transitions": {"issues": "repair", "clear": "write-record", "blocked": "halt"}
+    },
+    {
+      "id": "repair",
+      "resourceIds": ["audit-flow", "test-flow"],
+      "requiredResultFields": ["repairEvidence"],
+      "fieldConstraints": {"repairEvidence": {"type": "array", "minItems": 1}},
+      "transitions": {"complete": "verify", "blocked": "halt"}
+    },
+    {
+      "id": "verify",
+      "resourceIds": ["test-flow", "test-static", "test-live", "test-external"],
+      "requiredResultFields": ["verificationEvidence"],
+      "fieldConstraints": {"verificationEvidence": {"type": "array", "minItems": 1}},
+      "transitions": {"pass": "write-record", "fail": "repair", "blocked": "halt"}
+    },
+    {
+      "id": "write-record",
+      "resourceIds": ["audit-flow"],
+      "requiredResultFields": ["recordSetRef"],
+      "fieldConstraints": {"recordSetRef": {"type": "string", "minLength": 1}},
+      "transitions": {"complete": "reverse-audit", "blocked": "halt"}
+    },
+    {
+      "id": "reverse-audit",
+      "resourceIds": ["audit-flow"],
+      "requiredResultFields": ["reverseVerdicts"],
+      "fieldConstraints": {"reverseVerdicts": {"type": "array", "minItems": 1}},
+      "transitions": {"complete": "retention-triage", "blocked": "halt"}
+    },
+    {
+      "id": "retention-triage",
+      "resourceIds": ["audit-flow"],
+      "requiredResultFields": ["retentionDecisions"],
+      "fieldConstraints": {"retentionDecisions": {"type": "array", "minItems": 1}},
+      "transitions": {"complete": "convergence", "blocked": "halt"}
+    },
+    {
+      "id": "convergence",
+      "resourceIds": ["audit-flow"],
+      "requiredResultFields": [],
+      "fieldConstraints": {},
+      "transitions": {"converged": "complete", "repeat": "baseline", "blocked": "halt"}
+    }
+  ]
+}

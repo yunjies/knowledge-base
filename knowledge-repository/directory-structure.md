@@ -12,6 +12,14 @@ knowledge-base-main/
 ├── .gitignore
 ├── .gitmodules
 ├── .agents/
+│   ├── domain-agents/
+│   │   ├── AGENTS.md
+│   │   ├── spec.md
+│   │   └── template/
+│   │       ├── AGENTS.md
+│   │       ├── scripts/
+│   │       ├── data/
+│   │       └── tests/
 │   ├── knowledge-repository/
 │   └── skills/
 ├── .github/
@@ -44,6 +52,7 @@ knowledge-base-main/
 
 ## 各目录作用
 
+- `.agents/domain-agents/` — 单领域 subagent 的规范与脚本优先实例模板；规范为 `spec.md`，模板提供 Host bundle、`scripts/`、结构化 `data/` 与运行测试。
 - `.agents/knowledge-repository/` — 跨项目可复用的规则、审核视角与流程；索引为其 `AGENTS.md`。它与工程根 `knowledge-repository/` 按复用范围分工，同一条规则只在一个权威位置承载。
 - `.agents/skills/` — 随本工程分发的自定义技能、规范册与技能工具；技能入口为各自的 `SKILL.md`。规范册以此处为权威源，`_lint/` 不扫描此目录。
 - `.github/workflows/` — 仓库自动化工作流；文档守护工作流调用 `_lint/` 的运行入口。

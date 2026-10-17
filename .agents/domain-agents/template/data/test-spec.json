@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "domainId": "knowledge-base-operations",
+  "changeKinds": [
+    {
+      "id": "knowledge-base-document",
+      "layers": ["lint"],
+      "resourceIds": ["agent-policy", "directory-map", "test-flow"]
+    },
+    {
+      "id": "knowledge-base-lint-code",
+      "layers": ["static"],
+      "resourceIds": ["test-flow", "test-static"]
+    },
+    {
+      "id": "repository-source",
+      "layers": ["static", "live", "external"],
+      "resourceIds": ["test-flow", "test-static", "test-live", "test-external"]
+    }
+  ]
+}
