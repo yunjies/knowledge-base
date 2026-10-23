@@ -1,6 +1,6 @@
 # 项目资产索引
 
-本索引列出 `assets/projects/` 中的项目入口，并将本机当前 DSH CLI 版本与各 DSH 插件自身的兼容基线分开标注；单个项目的流程、部署和源码分别以其项目文档与仓库克隆为准。
+本索引列出 `assets/projects/` 中的项目资产入口。领域流程、部署与审核资料按项目行给出的领域知识入口读取；源码实现与项目测试以对应的源码 checkout 为准。
 
 ## 当前 DSH 版本
 
@@ -13,7 +13,7 @@
 | 项目 | 用途 | DSH 版本标注 | 入口 |
 | --- | --- | --- | --- |
 | `home-media-pilot` | 家庭媒体控制面与容器化部署 | 非 DSH 插件；不适用 | [流程](home-media-pilot/feature-flow.md) · [部署](home-media-pilot/deploy.md) · [仓库说明](home-media-pilot/home-media-pilot/README.md) |
-| `dsh-credentials` | DSH agent 凭证目录与管理页面 | 项目部署说明未固定 DSH 版本；按其适用范围与测试说明核验 | [流程](dsh-credentials/feature-flow.md) · [部署](dsh-credentials/deploy.md) · [仓库说明](dsh-credentials/dsh-credentials/README.md) |
+| `dsh-credentials` | DSH agent 凭证目录与管理页面 | 项目部署说明未固定 DSH 版本；按其适用范围与测试说明核验 | [源码仓库说明](dsh-credentials/README.md) · [领域知识](../domain-knowledge/dsh-credentials/README.md) |
 | `dsh-settings-trusted-authority` | 为可信远程 Web authority 提供 Host-backed Settings 持久化 | 插件包[版本](dsh-settings-trusted-authority/dsh-settings-trusted-authority/package.json)为 `0.1.0`；DSH 验证基线 `0.2.0-rc.2`，与本机当前 CLI 一致 | [流程](dsh-settings-trusted-authority/feature-flow.md) · [部署](dsh-settings-trusted-authority/deploy.md) · [GitHub](https://github.com/yunjies/dsh-settings-trusted-authority) · [本地仓库说明](dsh-settings-trusted-authority/dsh-settings-trusted-authority/README.md) |
 
 ## 跨项目方案

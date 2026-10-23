@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "domains": [
+    {
+      "id": "dsh-credentials",
+      "title": "DSH agent credentials",
+      "manifestPath": "dsh-credentials/data/manifest.json",
+      "repositoryIds": ["dsh-credentials"]
+    }
+  ]
+}

@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "domainId": "dsh-credentials",
+  "resources": [
+    {
+      "id": "feature-flow",
+      "kind": "implemented-flow",
+      "title": "dsh-credentials 已实现流程",
+      "path": "assets/domain-knowledge/dsh-credentials/feature-flow.md",
+      "format": "markdown",
+      "maxBytes": 900000
+    },
+    {
+      "id": "dsh-deployment",
+      "kind": "dsh-integration-deployment",
+      "title": "dsh-credentials DSH profile 部署入口",
+      "path": "assets/domain-knowledge/dsh-credentials/deploy.md",
+      "format": "markdown",
+      "maxBytes": 40000
+    },
+    {
+      "id": "project-build",
+      "kind": "project-build-index",
+      "title": "dsh-credentials 源码构建说明",
+      "path": "assets/projects/dsh-credentials/README.md",
+      "anchor": "构建",
+      "format": "markdown",
+      "maxBytes": 120000
+    },
+    {
+      "id": "project-tests",
+      "kind": "project-test-specification",
+      "title": "dsh-credentials 项目测试规范",
+      "path": "assets/projects/dsh-credentials/tests/README.md",
+      "format": "markdown",
+      "maxBytes": 300000
+    },
+    {
+      "id": "domain-tests",
+      "kind": "domain-knowledge-test-entry",
+      "title": "dsh-credentials 领域知识测试入口",
+      "path": "assets/domain-knowledge/dsh-credentials/tests/README.md",
+      "format": "markdown",
+      "maxBytes": 20000
+    },
+    {
+      "id": "version-management",
+      "kind": "version-management-policy",
+      "title": "通用版本管理流程",
+      "path": ".agents/skills/version-management/SKILL.md",
+      "format": "markdown",
+      "maxBytes": 60000
+    },
+    {
+      "id": "github-cli-constraints",
+      "kind": "github-cli-policy",
+      "title": "GitHub CLI 操作护栏",
+      "path": ".agents/skills/version-management/references/github-constraints.md",
+      "format": "markdown",
+      "maxBytes": 50000
+    }
+  ],
+  "repositories": [
+    {
+      "id": "dsh-credentials",
+      "root": "assets/projects/dsh-credentials",
+      "readPaths": [
+        "README.md",
+        "package.json",
+        "bundle.patch.yml",
+        "loader-configs/build.json",
+        "src/**",
+        "tests/**",
+        "scripts/**"
+      ],
+      "denyPaths": [
+        ".git/**",
+        "node_modules/**",
+        "dist/**",
+        "tests/.artifacts/**",
+        "**/.env*",
+        "**/*.log"
+      ],
+      "maxFileBytes": 500000,
+      "maxLines": 200
+    }
+  ],
+  "operationMethods": [
+    {
+      "id": "local-version-control",
+      "repositoryId": "dsh-credentials",
+      "methodId": "git-cli",
+      "resourceIds": ["version-management"]
+    },
+    {
+      "id": "github-remote",
+      "repositoryId": "dsh-credentials",
+      "methodId": "github-cli",
+      "resourceIds": ["version-management", "github-cli-constraints"]
+    },
+    {
+      "id": "dsh-profile-install",
+      "repositoryId": "dsh-credentials",
+      "methodId": "dsh-plugin-cli",
+      "resourceIds": ["dsh-deployment", "project-build"]
+    },
+    {
+      "id": "domain-knowledge-validation",
+      "repositoryId": "dsh-credentials",
+      "methodId": "pytest",
+      "resourceIds": ["domain-tests"]
+    },
+    {
+      "id": "project-source-validation",
+      "repositoryId": "dsh-credentials",
+      "methodId": "npm-test",
+      "resourceIds": ["project-tests"]
+    }
+  ],
+  "changeKinds": [
+    {
+      "id": "domain-knowledge",
+      "layers": ["lint"],
+      "resourceIds": ["feature-flow", "dsh-deployment", "domain-tests"]
+    },
+    {
+      "id": "project-source",
+      "layers": ["static", "live", "external"],
+      "resourceIds": ["project-build", "project-tests"]
+    }
+  ]
+}

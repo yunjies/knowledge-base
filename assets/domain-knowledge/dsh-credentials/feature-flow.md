@@ -1,8 +1,8 @@
 # dsh-credentials 凭证初始化与管理流程
 
-本文档描述 `dsh-credentials` 已实现的流程：DSH 加载本插件后，宿主侧把凭证目录接到凭证 seam 并注册模型工具与 RPC，浏览器侧在设置面板注册一个「凭证」页；用户在该页写入一个值，值单向流入本机凭证库，状态回流到页面与模型。SSH 这一域另有自己的流程：一条密码引导路径负责**建立**免密能力，一张目标面板负责**使用**它并报告它现在还通不通，已登记行的「重新绑定」则在连接失败时承担**修复**——重输一次账号密码换一把新密钥，不必从零再配一遍。文档覆盖流程的主干、分叉点、失败出口，以及每个环节的输入输出；末节 [未验证面](#未验证面) 列出已实现但证据尚未取到的环节，读到的部分未经验证时以该节为准。
+本文档描述 `dsh-credentials` 已实现的流程：DSH 加载本插件后，宿主侧把固定凭证目录、自定义 HTTP Web 服务和 SSH 目标接到凭证 seam 并注册模型工具与 RPC，浏览器侧在设置面板注册一个「凭证」页；用户可写入普通凭证，也可新增带 HTTP 端点与 Basic/Bearer 登录信息的自定义服务。秘密只经 credential seam 单向流入本机凭证库，公开配置与可用状态回流到页面；HTTP 登录验证由用户点击触发主请求和同 scheme 无效凭据对照请求。SSH 这一域另有自己的流程：一条密码引导路径负责**建立**免密能力，一张目标面板负责**使用**它并报告它现在还通不通，已登记行的「重新绑定」则在连接失败时承担**修复**——重输一次账号密码换一把新密钥，不必从零再配一遍。文档覆盖流程的主干、分叉点、失败出口，以及每个环节的输入输出；末节 [验证边界](#验证边界) 列出已实现但证据尚未取到的环节，读到的部分未经验证时以该节为准。
 
-本工程的源码在 [dsh-credentials/](dsh-credentials/)（自带 `.git` 与远端），下文所有路径与命令都以该目录为工程根。部署与使用方式见同目录 [deploy.md](deploy.md)。
+本工程的源码在 [dsh-credentials/](../../projects/dsh-credentials/)（自带 `.git` 与远端），下文所有路径与命令都以该目录为工程根。部署与使用方式见同目录 [deploy.md](deploy.md)。
 
 ## 主流程
 
@@ -22,6 +22,8 @@ flowchart TB
   ACTION -->|"设置/替换"| WRITE["写单个值"]
   ACTION -->|"移除"| UNSET["删单个 ref"]
   ACTION -->|"配置免密登录"| BSSELECT["填目标机并读指纹"]
+  ACTION -->|"管理自定义 HTTP 服务"| HWEB[["管理自定义 HTTP 服务"]]
+  HWEB --> LIST
   WRITE --> LIST
   UNSET --> LIST
   TARGETS --> LIST
@@ -51,7 +53,7 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 
 ## MOUNT
 
-两侧各自的唯一装配入口：把端口实现与业务对象拼起来，并让每个副作用可释放。本节点是**唯一按形态分叉**的节点——两种形态的差别到此为止，向下的 section 注册、工具定义、读清单、写入、移除完全相同。
+两侧各自的唯一装配入口：把端口实现与业务对象拼起来，并让每个副作用可释放。本节点是**唯一按形态分叉**的装配节点——两种形态的端口与传输注册在此分开，向下共享 section 注册、工具定义、凭证读写、SSH 目标处理和自定义 HTTP 服务业务。
 
 形态分叉在构建期完成：`src/{host,client}/adapters/index.ts` 是形态无关入口，`loader-configs/build.json` 的 `adapters` 声明它在两种形态下分别解析到哪个实现。因此**运行时看不到分叉**，只有产物不同。
 
@@ -60,15 +62,15 @@ DSH 在自己的进程与页面里加载本插件，把运行所需的服务交�
 | **cordis** | `harness.handle` 注册 Package 私有方法 | `host.call` |
 | **bundle** | profile `webServer` 上注册 `/dsh-credentials/api` 前缀路由 | 同源 `fetch` POST |
 
-bundle 路由的 [readJsonBody](dsh-credentials/src/host/adapters/bundle/registrar.ts#L257) 按 UTF-8 字节数累计请求体大小，超过 1 MiB 返回 HTTP 413；字符数不能代替字节数判定。
+bundle 路由的 [readJsonBody](../../projects/dsh-credentials/src/host/adapters/bundle/registrar.ts#L257) 按 UTF-8 字节数累计请求体大小，超过 1 MiB 返回 HTTP 413；字符数不能代替字节数判定。
 
-宿主侧装配链（两形态同形）：端口实现 → `CredentialCatalog` → `src/host/tool.ts` 的 `register()`。客户端侧装配链（两形态同形）：`ClientPorts` → `src/client/index.ts` 的 `mount()`。
+宿主侧装配链（两形态同形）：端口实现 → `CredentialCatalog`、`ServiceRegistry`、`HttpLoginService` → `src/host/tool.ts` 的 `register()`。客户端侧装配链（两形态同形）：`ClientPorts` → `src/client/index.ts` 的 `mount()`；固定凭证与自定义 HTTP 服务动作通过各自的 RPC 到达对应宿主服务。
 
 `seam()` 在 seam 缺失时返回 `undefined` 而非抛错：目录仍要能列出「有哪些凭证」，即使这台机器一个都写不了。`register()` 与形态适配器返回的每个 disposer 都由 fiber 持有，插件停止、更新或移除时一并撤下。
 
-宿主侧另有一条插件自有的诊断落盘通道，与宿主 logger 并存：每条 `report()` 消息**先落盘、再走既有 logger**——落盘写 `$DSH_HOME/logs/dsh-credentials.log`（路径解析与行格式见 `src/host/adapters/file-log.ts`，一行一报可 grep），宿主 logger 目前只进 cordis `LoggerService` 的内存环形 buffer（`@deepseek-ai/cordis/src/logger.ts`），全宿主无 stdout/文件 exporter，故后者不落 journal。两形态的落盘实现不同：bundle 经 `file-log.ts` 同步 append（fire-and-forget 之下异步会重演「产生即蒸发」，写失败静默不抛）；cordis body 是 `new Function` 无 import，经既有 `shell` 服务把行从 stdin 追加到同一文件，`shell` 缺失时静默降级只走 logger。logger 缺失或抛错的行为不变。
+宿主侧另有一条插件自有的诊断落盘通道，与宿主 logger 并存：每条 `report()` 消息**先落盘、再走既有 logger**——落盘写 `$DSH_HOME/logs/dsh-credentials.log`（路径解析与行格式见 `src/host/adapters/file-log.ts`，一行一报可 grep），宿主 logger 目前只进 cordis `LoggerService` 的内存环形 buffer（`@deepseek-ai/cordis/src/logger.ts`），全宿主无 stdout/文件 exporter，故后者不落 journal。两形态的落盘实现不同：bundle 经 `file-log.ts` 同步 append（fire-and-forget 之下异步会重演「产生即蒸发」，写失败时发出不含报告正文的 stderr 警告且不抛错）；cordis body 是 `new Function` 无 import，经既有 `shell` 服务把行从 stdin 追加到同一文件，`shell` 缺失时发出 stderr 警告并继续走 logger。logger 缺失或抛错的行为不变。
 
-上表 bundle 一列已实测：宿主侧前缀路由由真实 `webServer` 注册并分发（未服务的操作答 404），客户端侧经同源 `fetch` POST 真实往返。该证据适用于 bundle 路径。
+bundle 一列的断言面：宿主侧前缀路由由真实 `webServer` 注册并分发（未服务的操作答 404），客户端侧经同源 `fetch` POST 往返；探针入口见 `tests/e2e/host-route.e2e.mjs`。
 
 **输入**
 
@@ -91,7 +93,7 @@ bundle 路由的 [readJsonBody](dsh-credentials/src/host/adapters/bundle/registr
 
 宿主半在 `harness.defineTool` 处被运行期拒绝时的终止出口：插件不进入 `currentPackageId`，停在 `nextPackageId`，宿主半的 RPC 与工具**一个都没有注册**，客户端半即使起来了也无处可调。
 
-拒绝原因是结构性的，不是运行环境的偶然——`defineTool` 校验的是定义本身的形状。已知会被拒的有三类：缺 `output` 声明；`output.schema` 里用了对象级 `required` 数组；`parameters` 根声明了 `additionalProperties`。这些都由单测的形状锁守卫，见 [tests/README.md](dsh-credentials/tests/README.md)。
+拒绝原因是结构性的，不是运行环境的偶然——`defineTool` 校验的是定义本身的形状。已知会被拒的有三类：缺 `output` 声明；`output.schema` 里用了对象级 `required` 数组；`parameters` 根声明了 `additionalProperties`。这些都由单测的形状锁守卫，见 [tests/README.md](../../projects/dsh-credentials/tests/README.md)。
 
 本节点是终止态，不出边：能修的是定义，不是运行环境。
 
@@ -125,7 +127,7 @@ bundle 路由的 [readJsonBody](dsh-credentials/src/host/adapters/bundle/registr
 
 ## TOOL
 
-宿主半注册模型工具 `credential_manage` 与一组 Package 私有 RPC——凭证侧 `catalog`／`save`／`remove`，SSH 侧 `targets`／`target-probe`／`target-register`／`target-rename`／`target-forget`／`target-rebind`——两者共用同一个 `CredentialCatalog` 实例，因而两条路径对状态的判定、对写入的拒绝条件不可能分叉。RPC 清单的权威源是 `src/shared/protocol.ts` 的 `OPERATIONS`：宿主注册的每个方法都必须在其中，否则 bundle 路由不分发它、按钮答 404（该守卫见 [tests/README.md](dsh-credentials/tests/README.md)）。
+宿主半注册模型工具 `credential_manage` 与一组 Package 私有 RPC。固定凭证与 SSH RPC 分别为 `catalog`／`save`／`remove`、`targets`／`target-probe`／`target-register`／`target-rename`／`target-forget`／`target-rebind`；设置页专用的 HTTP 登录与自定义服务 RPC 为 `http-login-save`／`http-login-remove`／`http-login-probe`、`service-create`／`service-rename`／`service-remove`。固定凭证与模型工具共用同一个 `CredentialCatalog` 实例；自定义 HTTP 服务管理只由设置页动作调用，`credential_manage` 不读回秘密也不执行这些 HTTP 管理 RPC。RPC 清单的权威源是 `src/shared/protocol.ts` 的 `OPERATIONS`：宿主注册的每个方法都必须在其中，否则 bundle 路由不分发它、按钮答 404（该守卫见 [tests/README.md](../../projects/dsh-credentials/tests/README.md)）。
 
 工具定义同时满足**两套方向相反的 schema 方言**：`parameters` 用根级 `required` 数组且省略 `additionalProperties`（隐式参数根是开放的）；`output.schema` 用逐属性 `required: true` 且每个对象节点显式声明 `additionalProperties`。`output.render` 返回内容块数组，不返回裸字符串。
 
@@ -160,15 +162,16 @@ bundle 路由的 [readJsonBody](dsh-credentials/src/host/adapters/bundle/registr
 
 ## LIST
 
-页面挂载后立即经 `host.call('catalog')` 读一次全量清单，宿主侧对目录里**每一个** ref 调一次 `credentials.describe()`。
+页面挂载后立即经 `host.call('catalog')` 读一次全量清单。宿主把固定凭证目录与设置文档中的自定义 HTTP 服务身份、登录公开元数据合并成同一份 entries；对每一个凭证 ref 调一次 `credentials.describe()`，只取配置状态与来源，不读取秘密值。
 
-解析是**每次调用现读、不跨调用缓存**——这正是「刚存下的值下一次读就可见、无需重启」的机制。单条 `describe` 抛错不中断整表：那条记为 `error` 并带上原因，其余照常返回。
+解析是**每次调用现读、不跨调用缓存**——这正是「刚存下的值下一次读就可见、无需重启」的机制。单条 `describe` 抛错不中断整表：那条记为 `error` 并带上原因，其余照常返回。自定义服务删除后，同一 id 重建不会从旧 `httpLogin` 元数据复活端点。
 
 **输入**
 
 - `PAGE_MOUNTED`：页面已挂载；来源为 `OPEN`。
 - `WRITE_RESULT`：上一次写入的结果；来源为 `WRITE`。到达即表示需要重读，内容本身不参与判定。
 - `UNSET_RESULT`：上一次删除的结果；来源为 `UNSET`。与 `WRITE_RESULT` 同理。
+- `HTTP_SERVICE_RESULT`：自定义 HTTP 服务管理结束后的页面结果；来源为 `HWEB`。返回主流程后重读全量清单。
 
 **输出**
 
@@ -196,7 +199,7 @@ bundle 路由的 [readJsonBody](dsh-credentials/src/host/adapters/bundle/registr
 
 ## GRID
 
-按 `GROUPS` 的顺序分组渲染，空组不渲染（避免出现一个只有标题的空白组）；每行显示名称、ref、状态徽章、用途，已配置时另显来源。
+按 `GROUPS` 的顺序分组渲染，空组不渲染（避免出现一个只有标题的空白组）；每行显示名称、ref、状态徽章、用途，已配置时另显来源。`Web 服务` 组展示用户自定义服务昵称、端点与 Basic 账号，并在空组时提供新增入口；Basic/Bearer 登录配置由该组的服务表单管理。
 
 `state` 的四种取值在此逐行呈现且互相可辨：`set`／`unset`／`no-store`／`error`。`no-store` 与 `error` 刻意分开：前者这台机器修不了，后者可能再读一次就好，合并二者会给出错误指引。
 
@@ -219,7 +222,7 @@ bundle 路由的 [readJsonBody](dsh-credentials/src/host/adapters/bundle/registr
 
 **登记表存在设置文档里**（namespace `dsh-credentials`），不在凭证 seam 里。两个事实决定了这一点：本部署的凭证 seam 是 `0.1.0-rc.7`，只暴露引用半（`describe`／`set`／`unset`）**没有枚举**，而目标列表最需要的恰恰是可枚举；而目标本来就不是机密——`~/.ssh/config` 早已把地址、账号、密钥路径明文写着。全程唯一真正的机密是密码，它不落任何存储。
 
-登记表变更（登记、改名、移除与重绑定后的密钥路径更新）由 [`TargetRegistry`](dsh-credentials/src/host/targets.ts) 串行执行，避免并发读-改-写互相覆盖。
+登记表变更（登记、改名、移除与重绑定后的密钥路径更新）由 [`TargetRegistry`](../../projects/dsh-credentials/src/host/targets.ts) 串行执行，避免并发读-改-写互相覆盖。
 
 **输入**
 
@@ -291,7 +294,7 @@ flowchart TB
 
 **失败模式**
 
-- `~/.ssh/config` 不存在（`ENOENT`）：[`readSshConfig`](dsh-credentials/src/host/adapters/ports-targets.ts#L51) 按空文件处理；其他读取错误交由上层写入 warning 后按空文件降级，不阻断登记表读取。
+- `~/.ssh/config` 不存在（`ENOENT`）：[`readSshConfig`](../../projects/dsh-credentials/src/host/adapters/ports-targets.ts#L51) 按空文件处理；其他读取错误交由上层写入 warning 后按空文件降级，不阻断登记表读取。
 
 
 ### TRENDER
@@ -309,7 +312,7 @@ flowchart TB
 
 ### TLIST
 
-逐行渲染，每行三个互相独立的事实：**登记状态**（`已登记`／`未登记`）、**连接状态**（`已连接`／`认证失败`／`连不上`／`未检测`）、**显示名称**（昵称，纯显示，不影响 ssh 怎么连）。已登记的行另显密钥路径。
+逐行渲染，每行三个互相独立的事实：**登记状态**（`已登记`／`未登记`）、**连接状态**（`已连接`／`认证失败`／`连不上`／`沙箱拒绝`／`本机无法执行`／`未检测`）、**显示名称**（昵称，纯显示，不影响 ssh 怎么连）。已登记的行另显密钥路径。`沙箱拒绝`表示执行策略未允许探活命令运行；`本机无法执行`表示 ssh 缺失、执行器未启动命令或进程被信号终止；二者均不表示目标主机连接失败。映射以 [`stateBadge`](../../projects/dsh-credentials/src/shared/targets.ts) 与 [`classifyProbe`](../../projects/dsh-credentials/src/shared/targets.ts) 为准，行内失败详情由 [`probeDetail`](../../projects/dsh-credentials/src/client/targets-panel.ts) 呈现。
 
 连接状态在本次进程内记忆、**不落盘**：它是某一刻网络的事实，不是机器的属性，昨天写的「已连接」今天读出来就是一句自信的谎话。所以进程重启后每个目标都回到 `未检测`。已登记的行在「认证失败」时另显一行提示，把出口指到「重新绑定」——那是面板能为这一状态点名的唯一修复动作（见 `src/client/targets-panel.ts` 的 `unauthenticatedHint`）。
 
@@ -394,7 +397,7 @@ flowchart TB
 **失败模式**
 
 - 别名不在当前列表里：拒绝，且**不运行 ssh**——未知别名没有可描述的目标。
-- [`TargetRegistry.probe`](dsh-credentials/src/host/targets.ts#L131) 探活期间若目标被移除或同别名身份改变，旧探活结果不返回成功 verdict/view，也不写入探活缓存；面板保持该目标为未检测状态。
+- [`TargetRegistry.probe`](../../projects/dsh-credentials/src/host/targets.ts#L131) 探活期间若目标被移除或同别名身份改变，旧探活结果不返回成功 verdict/view，也不写入探活缓存；面板保持该目标为未检测状态。
 - ssh 非零退出：按 stderr 分类，绝不因退出码非零而报 `connected`。
 - 机器不可达：报 `连不上` 并给出分类后的原因。
 
@@ -474,7 +477,7 @@ flowchart TB
 
 #### TRFORM
 
-展开一个与引导表单同形的输入面：地址、端口、账号默认取登记表里该目标的现有值，别名以禁用输入框的形式固定——重绑定不产生新机器、不产生新文件；密码留空待输。表单的可用性判定在 [targets-panel.ts](dsh-credentials/src/client/targets-panel.ts) 的 `canRebindScan`／`canRebindSubmit`：地址填了才允许扫描，指纹已确认、地址账号非空且密码非空才允许提交。引导与重绑定的指纹确认均绑定当前 host+port；端点编辑会清除确认。重绑定表单保留上次指纹并在扫描端点与当前端点不同时标出陈旧提示，只有端点匹配且用户重新确认后才可提交；引导表单则在端点编辑时清除旧扫描指纹。
+展开一个与引导表单同形的输入面：地址、端口、账号默认取登记表里该目标的现有值，别名以禁用输入框的形式固定——重绑定不产生新机器、不产生新文件；密码留空待输。表单的可用性判定在 [targets-panel.ts](../../projects/dsh-credentials/src/client/targets-panel.ts) 的 `canRebindScan`／`canRebindSubmit`：地址填了才允许扫描，指纹已确认、地址账号非空且密码非空才允许提交。引导与重绑定的指纹确认均绑定当前 host+port；端点编辑会清除确认。重绑定表单保留上次指纹并在扫描端点与当前端点不同时标出陈旧提示，只有端点匹配且用户重新确认后才可提交；引导表单则在端点编辑时清除旧扫描指纹。
 
 **输入**
 
@@ -577,7 +580,7 @@ flowchart TB
 
 #### TRPROBE
 
-成功路径上的最后一次探活，实现在 `src/client/targets-panel.ts` 的 `rebindSubmit`（提交 `70bdc85` 引入）：远端装上新公钥、本机换好新私钥、登记表改指之后，对刚换上新密钥的那个别名发**恰好一次** `target-probe`，然后才 `reload()`。探活结论像任何一次探活一样落进登记器的探活缓存，随后的重读把行重绘成「已连接」；探活自己分类出的失败结论也照常呈现——它是新密钥的真实状态，不是要吞掉的异常。
+成功路径上的最后一次探活，实现在 [`rebindSubmit`](../../projects/dsh-credentials/src/client/targets-panel.ts)：远端装上新公钥、本机换好新私钥、登记表改指之后，对刚换上新密钥的别名发**恰好一次** `target-probe`，然后重读登记表。探活结论像任何一次探活一样落进登记器的探活缓存，随后重读把行重绘为探活结果；探活分类出的失败结论也照常呈现。
 
 **这一次探活不违反「只在用户点击时探活」**（该原则见 `TPROBE` 与 `src/host/tool.ts` 的注册注释）：它发生在用户的「重新绑定」这一次点击之内，而**新密钥确实能用**正是重绑定的验收标准——一次成功的重绑定之后行落回「未检测」，等于把用户点这一下的目的藏起来了。
 
@@ -618,9 +621,9 @@ flowchart TB
 
 ## ACTION
 
-用户在某一行上选一个动作。可写性由 `writable` **与** `state` 共同决定：`writable` 为假（只读来源遮蔽该 ref）或 `state` 为 `no-store` 时两个按钮都禁用——禁用而非隐藏，使「为什么不能改」在界面上可见。
+用户在固定凭证行上选一个动作。可写性由 `writable` **与** `state` 共同决定：`writable` 为假（只读来源遮蔽该 ref）或 `state` 为 `no-store` 时两个按钮都禁用——禁用而非隐藏，使「为什么不能改」在界面上可见。自定义 Web 服务有独立的管理表单与宿主 RPC，不经过固定凭证的 `WRITE`／`UNSET`。
 
-点「设置」或「替换」展开输入行，点「移除」直接进入 `UNSET`。`state` 为 `set` 时才渲染「移除」按钮。
+固定凭证点「设置」或「替换」展开输入行，点「移除」进入 `UNSET`；只有状态为 `set` 的固定凭证行才显示「移除」。自定义 Web 服务行始终允许移除，包括登录未配置的服务，以便清理创建或保存失败后留下的服务身份。
 
 **输入**
 
@@ -631,10 +634,159 @@ flowchart TB
 
 - `WRITE_INTENT`：待写入的 `id`；去向为 `WRITE`。
 - `UNSET_INTENT`：待删除的 `id`；去向为 `UNSET`。
+- `HTTP_SERVICE_INTENT`：用户选择管理自定义 HTTP 服务；去向为 `HWEB`。
+
+## HWEB
+
+```mermaid
+flowchart TB
+  HWSTART(["进入自定义 HTTP 服务管理"]) --> HWLOAD["读取服务与登录状态"]
+  HWLOAD --> HWVIEW["渲染空态或服务行"]
+  HWVIEW --> HWACTION{"用户选择操作"}
+  HWACTION -->|"创建并接入／保存登录"| HWSAVE["保存服务身份与登录"]
+  HWACTION -->|"改名"| HWRENAME["更新服务昵称"]
+  HWACTION -->|"移除"| HWREMOVE["清理登录与服务身份"]
+  HWACTION -->|"验证登录"| HWPROBE["发送认证对照探测"]
+  HWACTION -->|"离开"| HWEXIT(["返回凭证页流程"])
+  HWSAVE -->|"成功或补偿结果"| HWLOAD
+  HWRENAME -->|"成功或拒绝"| HWLOAD
+  HWREMOVE -->|"成功或部分失败"| HWLOAD
+  HWPROBE -->|"探测分类或前置错误"| HWLOAD
+```
+
+自定义 HTTP Web 服务的设置页子流程。它管理服务昵称、固定身份 ref、端点与 HTTP 登录元数据，秘密只经凭证 seam；这一路径是用户在页面上的显式动作，不由模型工具自动发起网络请求。
+
+**输入**
+
+- `HTTP_SERVICE_INTENT`：进入自定义 HTTP 服务管理的动作；来源为 `ACTION`。
+- `HTTP_SERVICE_RESULT`：自定义服务子流程的返回结果；来源为 `HWEXIT`。
+
+**输出**
+
+- `HTTP_SERVICE_INTENT`：管理请求参数；去向为 `HWSTART`。
+- `HTTP_SERVICE_RESULT`：管理结束后的页面结果；去向为 `LIST`。
+
+### HWSTART
+
+进入服务管理子流程的开始节点。
+
+**输入**
+
+- `HTTP_SERVICE_INTENT`：用户选择管理自定义 HTTP 服务；来源为 `HWEB`。
+
+**输出**
+
+- `HTTP_SERVICE_CONTEXT`：本次管理上下文；去向为 `HWLOAD`。
+
+### HWLOAD
+
+读取设置文档中的 `services` 身份和 `httpLogin` 公开元数据，再由固定目录的描述路径读取每个 ref 的 configured 状态；不调用 `resolve` 读取秘密。每次操作返回后重新读取，确保列表反映当前设置。
+
+**输入**
+
+- `HTTP_SERVICE_CONTEXT`：管理上下文；来源为 `HWSTART`。
+- `HTTP_SERVICE_OPERATION_RESULT`：上一次操作结果；来源为 `HWSAVE`、`HWRENAME`、`HWREMOVE` 或 `HWPROBE`。
+
+**输出**
+
+- `HTTP_SERVICE_SNAPSHOT`：服务昵称、ref、登录类型、端点、账号与 configured 状态；不含秘密；去向为 `HWVIEW`。
+
+### HWVIEW
+
+显示 Web 服务空态或自定义服务行。Basic 行显示端点与账号，Bearer 行显示端点；服务行无论是否已配置登录都保留移除按钮。空态只由用户在表单中创建服务，不会触发网络探测。
+
+**输入**
+
+- `HTTP_SERVICE_SNAPSHOT`：服务状态快照；来源为 `HWLOAD`。
+
+**输出**
+
+- `HTTP_SERVICE_ROWS`：可操作的自定义服务行；去向为 `HWACTION`。
+
+### HWACTION
+
+用户选择创建并接入、修改登录、改名、移除、手动探测或离开。只有明确点击「验证登录」才读取秘密并发送 HTTP 请求。
+
+**输入**
+
+- `HTTP_SERVICE_ROWS`：自定义服务行；来源为 `HWVIEW`。
+- `HTTP_USER_ACTION`：用户选择的动作；来源为界面交互。
+
+**输出**
+
+- `HTTP_SERVICE_SAVE_INTENT`：创建或保存登录的参数；去向为 `HWSAVE`。
+- `HTTP_SERVICE_RENAME_INTENT`：服务 id 与新昵称；去向为 `HWRENAME`。
+- `HTTP_SERVICE_REMOVE_INTENT`：服务 id；去向为 `HWREMOVE`。
+- `HTTP_LOGIN_PROBE_INTENT`：服务 id 与本次可选输入密码；去向为 `HWPROBE`。
+- `HTTP_SERVICE_EXIT`：离开动作；去向为 `HWEXIT`。
+
+### HWSAVE
+
+首次创建先写服务身份，再写端点与登录元数据，最后把密码或 key 写入 credential seam。修改已存在的登录时，先保存端点元数据，再保存秘密。Basic 要求用户名与密码；Bearer 不存用户名。端点拒绝 userinfo、query 和 fragment，防止秘密隐藏在公开设置 URL 中。
+
+设置写失败时不会写秘密。秘密写失败时返回已写入哪一半，并执行整体删除补偿；若补偿也失败，保留可见服务行并报告残余状态。provider 错误文本不透传，以免它回显秘密。
+
+**输入**
+
+- `HTTP_SERVICE_SAVE_INTENT`：创建或更新的服务与登录参数；来源为 `HWACTION`。
+
+**输出**
+
+- `HTTP_SERVICE_OPERATION_RESULT`：服务身份、端点元数据与秘密写入结果或补偿结果，不含秘密；去向为 `HWLOAD`。
+
+### HWRENAME
+
+只更新服务昵称，稳定的服务 id 与 credential ref 均不变，因此改名不会移动、复制或重写秘密。
+
+**输入**
+
+- `HTTP_SERVICE_RENAME_INTENT`：服务 id 与新昵称；来源为 `HWACTION`。
+
+**输出**
+
+- `HTTP_SERVICE_OPERATION_RESULT`：改名结果或可读拒绝原因；去向为 `HWLOAD`。
+
+### HWREMOVE
+
+先删除 `httpLogin` 端点元数据，再调用 seam 删除秘密，两个步骤都成功后才删除 `services` 身份记录。任一登录清理失败时身份行仍在，用户可重试；若身份记录删除失败，服务行仍可见但登录元数据与秘密已移除。provider 错误不透传，以免返回值中出现秘密。
+
+**输入**
+
+- `HTTP_SERVICE_REMOVE_INTENT`：服务 id；来源为 `HWACTION`。
+
+**输出**
+
+- `HTTP_SERVICE_OPERATION_RESULT`：删除成功或明确剩余状态；去向为 `HWLOAD`。
+
+### HWPROBE
+
+只在用户点击「验证登录」后探测。一个绝对 deadline 覆盖服务解析、设置读取、seam resolve、主请求与控制请求。主请求使用 GET，不带 body/cookie，且不跟随跳转。端点 query 与 fragment 在保存时拒绝。
+
+主请求 2xx 后，再以相同认证 scheme 对同一 URL 发送无效凭据控制请求：Basic 保持同一用户名并更换错误密码，Bearer 使用无效 key；只有控制请求返回 401 才报告凭据对照通过。控制请求 2xx 标记为公开端点；其余状态、异常或超时都不显示绿色成功。主请求 401 是认证失败，主请求 403 单独标记为拒绝访问而不推断凭据是否正确。结果只含分类、状态码与 URL，不含秘密。该判定证明的是同 URL 对有效与无效认证头返回了差异，不保证服务业务权限或响应语义正确；端点限流等非认证行为仍可能影响对照结果。
+
+**输入**
+
+- `HTTP_LOGIN_PROBE_INTENT`：服务 id 与本次可选输入密码；来源为 `HWACTION`。
+
+**输出**
+
+- `HTTP_SERVICE_OPERATION_RESULT`：探测分类，不含秘密；去向为 `HWLOAD`。
+
+### HWEXIT
+
+用户离开自定义服务管理子流程的结束节点。
+
+**输入**
+
+- `HTTP_SERVICE_EXIT`：离开动作；来源为 `HWACTION`。
+
+**输出**
+
+- `HTTP_SERVICE_RESULT`：子流程结束；去向为 `HWEB`。
 
 ## WRITE
 
-页面把 `{ id, value }` 经 `host.call('save')` 交给宿主；宿主按 **id** 查目录（不是按 ref——ref 不是 id，传 ref 会被拒），校验值非空后调 `credentials.set(ref, value)`。
+页面把固定凭证的 `{ id, value }` 经 `host.call('save')` 交给宿主；宿主按 **id** 查目录（不是按 ref——ref 不是 id，传 ref 会被拒），校验值非空后调 `credentials.set(ref, value)`。带 HTTP 登录配置的条目会被这条单值路径拒绝，须由 `HWEB` 同时保存端点与秘密。
 
 值在此处**单向流走**：宿主收到后直接交给 seam，不回显、不记日志、不做二次读取。写成功后对该 ref 重读一次状态，使返回的 `state` 是**写后的事实**而非假设。之后页面清空输入框并触发一次 `LIST`。
 
@@ -651,12 +803,12 @@ flowchart TB
 
 - 值为空：拒绝并提示改用「移除」——空值不能存，seam 会把空值当作「没有这个凭证」。
 - id 未知：拒绝并回显该 id，不触达 seam。
-- seam 拒绝：把 seam 的原话透传。最常见的原话是「只读来源遮蔽了该 ref」——即启动环境里已有同名变量，此时存了也不会生效，原话比任何改写都准确。
+- seam 拒绝：返回不含 provider 文本的通用拒绝原因，避免 provider 错误回显凭证值；常见原因是启动环境里的只读来源遮蔽该 ref。
 - seam 未挂载：拒绝并写明「凭证存储未挂载」。
 
 ## UNSET
 
-页面把 `{ id }` 经 `host.call('remove')` 交给宿主；宿主按 id 查目录后调 `credentials.unset(ref)`，再重读一次状态。删除一个不存在的 ref 是 no-op，不报错。删除同样会被只读来源遮蔽而拒绝，原因原话透传，与 `WRITE` 同一路径。
+固定凭证行把 `{ id }` 经 `host.call('remove')` 交给宿主；宿主按 id 查目录后调 `credentials.unset(ref)`，再重读一次状态。删除一个不存在的 ref 是 no-op，不报错。带 HTTP 登录配置的服务不能走该单值删除路径，必须走 `HWEB` 的三部分清理。
 
 **输入**
 
@@ -669,7 +821,7 @@ flowchart TB
 **失败模式**
 
 - id 未知：拒绝且不触达 seam。
-- 只读来源遮蔽：透传 seam 原话。
+- 只读来源遮蔽或 provider 拒绝：返回不含 provider 原文的拒绝原因，避免其中包含秘密。
 
 ## BSSELECT
 
@@ -696,7 +848,7 @@ flowchart TB
 
 本节点不判断技术条件，只承载一个事实：**第一次连接没有可对照的信任锚**。指纹由前一步显示，但「这是不是真的目标机」只能由人来判断——界面在此把提交密码的按钮**禁用**，而不是提示后放行。
 
-[BootstrapPanel](dsh-credentials/src/client/index.ts#L349) 将确认绑定当前扫描端点（host 与 port）；编辑任一端点字段都会清除确认状态并丢弃旧扫描结果，因此旧指纹不能授权新端点，改回原值也不会恢复先前确认。
+[BootstrapPanel](../../projects/dsh-credentials/src/client/index.ts#L349) 将确认绑定当前扫描端点（host 与 port）；编辑任一端点字段都会清除确认状态并丢弃旧扫描结果，因此旧指纹不能授权新端点，改回原值也不会恢复先前确认。
 
 **输入**
 
@@ -726,13 +878,13 @@ flowchart TB
 
 **公钥写进哪个文件由远端 sshd 的种类决定，远端脚本无从得知，因此双写。** OpenSSH 读 `~/.ssh/authorized_keys`，而 OpenWrt 的 dropbear 默认读 `/etc/dropbear/authorized_keys`——只写前者时 dropbear 主机上公钥内容对、文件错，装了也连不上（`INSTALL_KEY_COMMAND` 的源码注释取证自真实 openwrt）。所以脚本**总写** `~/.ssh/authorized_keys`，当 `[ -d /etc/dropbear ]` 成立时**另写** `/etc/dropbear/authorized_keys`；两处都是 `grep -qxF` 幂等追加、权限置 600；dropbear 路径不可写时静默跳过——OpenSSH 路径自成一份，不使整次安装失败（守护形态与缘由见 `src/shared/bootstrap.ts` 的 `INSTALL_KEY_COMMAND` 注释）。追加之后脚本**每个实际写入路径回显一行 `REMOTE_WROTE: <path>`**，让宿主核对公钥落进了哪个存储；宿主侧的判定逻辑对这批行天然忽略，兼容旧形态回显。
 
-**密码的生命周期在这一次调用内闭合**：先经 `shell`/`fs` 落成一个仅本用户可读的临时文件（写入后回读该文件的权限位校验，不符即删除并报错；权限取值与判据见 [工程 README](dsh-credentials/README.md)），ssh 经 `SSH_ASKPASS_REQUIRE=force` 指向的 askpass 程序从该文件读取。密码**不进 argv**、**不进环境变量**（该处可经 `/proc/<pid>/environ` 读到，故弃用）、**不进逐字记录**（落盘日志同样只带「口令长度=N」元信息，密码本体不入 `$DSH_HOME/logs/dsh-credentials.log`）；三条候选传递路径的比对见 [测试说明](dsh-credentials/tests/README.md)。
+**密码的生命周期在这一次调用内闭合**：先经 `shell`/`fs` 落成一个仅本用户可读的临时文件（写入后回读该文件的权限位校验，不符即删除并报错；权限取值与判据见 [工程 README](../../projects/dsh-credentials/README.md)），ssh 经 `SSH_ASKPASS_REQUIRE=force` 指向的 askpass 程序从该文件读取。密码**不进 argv**、**不进环境变量**（该处可经 `/proc/<pid>/environ` 读到，故弃用）、**不进逐字记录**（SSH stdout/stderr 在日志前按本次密码脱敏；日志不记录密码长度，脱敏实现见 [`BootstrapService`](../../projects/dsh-credentials/src/host/bootstrap.ts)）；三条候选传递路径的比对见 [测试说明](../../projects/dsh-credentials/tests/README.md)。
 
 临时文件的删除在 `finally`：成功、失败、抛错三条路都删。
 
-**远端命令是 `sh -s -- <公钥>`，脚本经 stdin 送达。** `sh -s` 从 **stdin** 读脚本，所以「脚本真的到了远端」由 `run()` 是否接上子进程的 stdin 决定，而不是由命令行的形状决定——两形态的端口都曾收下 `stdin` 参数然后丢掉它（见 [测试说明](dsh-credentials/tests/README.md) 的「两形态的 `run()` 都丢掉 `stdin`」）。丢掉时的表现是 `sh` 什么都没跑、**退出码 0**、没有 `INSTALLED`，于是本节点的守卫报出一条读起来像成功的失败。
+**远端命令是 `sh -s -- <公钥>`，脚本经 stdin 送达。** `sh -s` 从 **stdin** 读脚本，所以「脚本真的到了远端」由 `run()` 是否接上子进程的 stdin 决定，而不是由命令行的形状决定——两形态的端口都曾收下 `stdin` 参数然后丢掉它（见 [测试说明](../../projects/dsh-credentials/tests/README.md) 的「两形态的 `run()` 都丢掉 `stdin`」）。丢掉时的表现是 `sh` 什么都没跑、**退出码 0**、没有 `INSTALLED`，于是本节点的守卫报出一条读起来像成功的失败。
 
-**公钥经 SSH 传远端会被重分词，远端脚本因此不读 `$1` 而读 `"$*"`。** SSH 协议只传一条命令行字符串：本端传给 ssh 的每个远端参数被拼接成一个空格分隔的命令行，交远端 shell 重新分词——`ssh host sh -s -- "ssh-ed25519 AAAA comment"` 到远端变成无引号的 `sh -s -- ssh-ed25519 AAAA comment`，远端 `sh -s` 重分词后公钥的三个词各占一个位置参数，`$1` 只是公钥的第一词。截断发生在远端 shell 重解析这一步，与本端如何传 argv 无关（本端端口逐项传 argv 是对的），对 OpenSSH 与 dropbear 同样成立。`INSTALL_KEY_COMMAND`（`src/shared/bootstrap.ts`）的全部取键处（形状校验、grep 比对、追加写入、长度与逐词回显）因此都读 `"$*"`：远端重分词后 `"$*"` 以单空格拼接所有位置参数，恰好逐字节还原完整公钥；`$0` 是 shell 名不进 `$*`。该形态的取证与验证证据见[未验证面](#未验证面)的「公钥重分词截断的根因已定位」一段。
+**公钥经 SSH 传远端会被重分词，远端脚本因此不读 `$1` 而读 `"$*"`。** SSH 协议只传一条命令行字符串：本端传给 ssh 的每个远端参数被拼接成一个空格分隔的命令行，交远端 shell 重新分词——`ssh host sh -s -- "ssh-ed25519 AAAA comment"` 到远端变成无引号的 `sh -s -- ssh-ed25519 AAAA comment`，远端 `sh -s` 重分词后公钥的三个词各占一个位置参数，`$1` 只是公钥的第一词。截断发生在远端 shell 重解析这一步，与本端如何传 argv 无关（本端端口逐项传 argv 是对的），对 OpenSSH 与 dropbear 同样成立。`INSTALL_KEY_COMMAND`（`src/shared/bootstrap.ts`）的全部取键处（形状校验、grep 比对、追加写入、长度与逐词回显）因此都读 `"$*"`：远端重分词后 `"$*"` 以单空格拼接所有位置参数，恰好逐字节还原完整公钥；`$0` 是 shell 名不进 `$*`。该形态的取证与验证证据见[验证边界](#验证边界)一节及 `tests/shared/bootstrap.test.ts`。
 
 **远端是否收到了完整公钥，由两层判定回答，退出码与 `INSTALLED` 都回答不了它。** 第一层在远端脚本里：`INSTALL_KEY_COMMAND` 在追加 `authorized_keys` **之前**做形状拦截——`"$*"` 不含空格即 `echo REMOTE_REJECTED >&2; exit 1`，一条完整公钥至少是 `<类型> <主体>` 两个词，残缺行因此不再落盘；追加之后脚本回显两份自证特征——`REMOTE_KEYLEN`（`"$*"` 的字节数）与逐词的 `REMOTE_KEY: <word>`。第二层在宿主侧：`INSTALLED` 判定通过后再调 `remoteKeyEchoProblem`（`src/host/bootstrap.ts`）比对字节长度与逐词内容，不一致或回显缺席即判失败，**不写本机密钥与 config**。这一层兜住形状拦截管不到的情形——保留了空格的截断、被替换的值——脚本对残缺值照样能 grep 追加、`echo INSTALLED`、退出码 0。
 
@@ -794,7 +946,7 @@ flowchart TB
 
 ## PROBE
 
-模型侧的出口：agent 调 `credential_manage`，`action=list` 拿到与页面同源的清单（同一 `CredentialCatalog`），据以判断「这次 clone 私有仓库会不会因为没有 token 而失败」。本节点是终止态；`set`／`remove` 两个 action 会回到 `WRITE`／`UNSET` 的同一条宿主路径，但**都不返回值**，因而模型无法把凭证读进上下文。
+模型侧的出口：agent 调 `credential_manage`，`action=list` 拿到与页面同源的清单（同一 `CredentialCatalog`），据以判断「这次 clone 私有仓库会不会因为没有 token 而失败」。本节点不发送 HTTP 请求；HTTP 登录探测只由设置页用户点击后经 `HWEB` 触发。`set`／`remove` 两个 action 仅对固定凭证走 `WRITE`／`UNSET` 的同一条宿主路径，带 HTTP 登录配置的条目会被拒绝；这些 action 都不返回秘密值，因而模型无法把凭证读进上下文。
 
 **输入**
 
@@ -805,44 +957,38 @@ flowchart TB
 
 - `PROBE_RESULT`：状态与来源的清单，或写入结果；**不含值**；去向为模型回合。
 
-## 未验证面
+## 验证边界
 
 本节记录**已实现但尚未取到证据**的环节，使只读本流程文档的人不会把未验证的部分当成已验证。判据是「这条证据是否只有真实环境才提供」。
 
-**旧入口的三条主干活体证据均已取到**（真实 Chromium + 真实 DSH 进程）：
+`SECTION`、`GRID`、`WRITE` 的活体断言面分别由 `tests/e2e/client-mount.e2e.mjs`、`tests/e2e/browser-render.e2e.mjs` 与 `tests/e2e/host-route.e2e.mjs` 承载。`HWEB` 的真实宿主往返由 `tests/e2e/http-login.e2e.mjs` 覆盖创建、匹配 scheme 的探测与三部分删除；`tests/e2e/settings-screenshots.e2e.mjs` 覆盖空态、创建、改名、登录表单与移除。以上探针在隔离 profile 中运行，不替代目标生产 profile 的挂载核验，本文不固化某次运行的通过结果。
 
-1. `SECTION`——设置面板导航里真的出现「凭证」页（实测导航为 `General, Models, Plugins, 凭证, Agent presets`）；
-2. `GRID`——该页真的渲染出目录行与摘要行，无 slot 崩溃；
-3. `WRITE`——值经**本仓库源码**的路径真的写进 `$DSH_HOME/.credentials.yaml`（redirect 后的 provider 文件），且任何回包都不含该值。
+**bundle 形态的装配、注册、路由、页面与业务面证据**分布在 `tests/live-mount-probe.mjs`（装配）与 `tests/e2e/` 的宿主探针（进程与页面）。`bundle.patch.yml` 携带可挂载的行而**刻意不注册**，使挂载保持为一个单独、显式的动作；这些证据只适用于 bundle 路径。
 
-以上活体证据适用于已验证的 Cordis/bundle 入口；目标部署 profile 是否已挂载 bundle，仍需在该 profile 中单独核验。
+**目标 profile 的挂载与重载未由本流程验证**：bundle 构建产物存在不等于目标 profile 已安装并加载。当前可读的 DSH CLI/部署源码不足以证明 profile reload 动作或命令，因此本文不猜重载命令；部署维护者须提供其权威入口，操作者再通过目标 profile 的插件行与 Settings 页面验证加载结果。
 
-**bundle 形态已实测**：装配、注册、路由、页面、业务面都有活体证据（`tests/e2e/` 的宿主探针 + `tests/live-mount-probe.mjs` 的装配探针）。`bundle.patch.yml` 仍携带可挂载的行而**刻意不注册**，使挂载保持为一个单独、显式的动作。以上 bundle 证据仅适用于 bundle 路径。
-
-**目标 profile 的挂载状态未由本流程验证**：bundle 构建产物存在不等于目标 profile 已安装并加载；应按部署文档在目标 profile 中确认挂载与页面行为。
-
-**`tests/live-mount-probe.mjs` 当前基线即红**：报 `registered no tool`，且对干净的 git 树同样失败，属装配面 loader 环境的既有问题，与任何进行中的源码改动无关；在该探针恢复之前，「bundle 形态已实测」那条里的装配探针证据不可复算。
+`tests/live-mount-probe.mjs` 在当前运行环境验证 bundle 宿主侧的延迟服务装配与工具 schema 注册；该探针的输出只覆盖它明确观察到的装配路径，不证明目标 profile 已安装或已重载。
 
 **两种运行形态的构建产物边界**：bundle 与 Cordis 是本工程的两种运行形态。`npm run build:bundle` 产出 bundle；`npm run build:cordis` 产出的 `dist/cordis/cred/{host-body.js,client-body.js}` 是 Cordis 装配所用 body。两种构建均须退出码 0 且产物非空，可分别执行 `npm run build:bundle && test -s dist/bundle/index.mjs && test -s dist/bundle/client.js` 与 `npm run build:cordis && test -s dist/cordis/cred/host-body.js && test -s dist/cordis/cred/client-body.js`；Cordis body 不含静态 `import`（`new Function` 不支持），可复核 `grep -cE "^\s*import[\s(]" dist/cordis/cred/*.js` 为 0。构建成功不能证明目标 profile 已挂载插件。完整静态套件由 `DSH_PLUGIN_LOADER=/path/to/plugin-loader npm test` 执行，判据为退出码 0 且没有跳过的转换用例。
 
-**`BSDONE` 证到哪一步，说清楚**：安装**跑完**这一段已取到证据——公钥装到远端、私钥按 0600 落盘、`~/.ssh/config` 段写全、远端脚本经 stdin 真的执行（`tests/e2e/bootstrap-success.e2e.mjs`）；凭据也确实送到了真实 sshd（`install-path.e2e.mjs`）。**但「密码认证对真实服务器成功」没有取到**，因为这台机器上做不到：sshd 需要可读的 shadow 条目，而 `/etc/shadow` 是 `root:shadow` 0640、`/etc/pam.d` 与 `/etc/nsswitch.conf` 只读、无 `uidmap`、无 `sudo`、无容器运行时（逐条实测见 [测试说明](dsh-credentials/tests/README.md) 的「密码认证在这台机器上做不到」）。`bootstrap-success` 因此用 `PATH` 上的 `ssh` 替身顶掉「一台会接受密码的服务器」这一件，其余全是本仓库自己的代码。换一台有 root 或已装 `uidmap` 的机器即可补上，届时把替身换回真 `ssh`。该探针的 ssh 替身已改为真实执行远端脚本并直通其 stdout（使宿主的回显比对能读到 `REMOTE_KEYLEN`／`REMOTE_KEY` 行），但该 shim 改动**只经真 shell 语义验证**（直接以完整与残缺参数形态执行 `INSTALL_KEY_COMMAND`：完整公钥逐字一致追加且幂等、残缺单词被 `REMOTE_REJECTED` 拦截、前 2 词截断被回显比对兜住），**未经 e2e 进程实跑**——本机 workspace-write 沙箱写不了 DSH_HOME profile（`EROFS`），探针在本机起不来。
+**`BSDONE` 证到哪一步，说清楚**：安装**跑完**这一段已取到证据——公钥装到远端、私钥按 0600 落盘、`~/.ssh/config` 段写全、远端脚本经 stdin 真的执行（`tests/e2e/bootstrap-success.e2e.mjs`）；凭据也确实送到了真实 sshd（`install-path.e2e.mjs`）。**但「密码认证对真实服务器成功」没有取到**，因为这台机器上做不到：sshd 需要可读的 shadow 条目，而 `/etc/shadow` 是 `root:shadow` 0640、`/etc/pam.d` 与 `/etc/nsswitch.conf` 只读、无 `uidmap`、无 `sudo`、无容器运行时（逐条实测见 [测试说明](../../projects/dsh-credentials/tests/README.md) 的「密码认证在这台机器上做不到」）。`bootstrap-success` 因此用 `PATH` 上的 `ssh` 替身顶掉「一台会接受密码的服务器」这一件，其余全是本仓库自己的代码。换一台有 root 或已装 `uidmap` 的机器即可补上，届时把替身换回真 `ssh`。该探针的 ssh 替身已改为真实执行远端脚本并直通其 stdout（使宿主的回显比对能读到 `REMOTE_KEYLEN`／`REMOTE_KEY` 行），但该 shim 改动**只经真 shell 语义验证**（直接以完整与残缺参数形态执行 `INSTALL_KEY_COMMAND`：完整公钥逐字一致追加且幂等、残缺单词被 `REMOTE_REJECTED` 拦截、前 2 词截断被回显比对兜住），**未经 e2e 进程实跑**——本机 workspace-write 沙箱写不了 DSH_HOME profile（`EROFS`），探针在本机起不来。
 
-**公钥重分词截断的根因已定位**：截断发生在 SSH 把远端命令拼成命令行字符串、交远端 shell 重新分词那一步——本端逐项传 argv 是对的，残缺在远端 shell 重解析产生，对 OpenSSH 与 dropbear 同样成立（机制与修法见 `BSINSTALL`）。该结论由 `$DSH_HOME/logs/dsh-credentials.log` 取证：一次真实重绑定中本地公钥逐字节完整、本地 argv 形态正确，远端仍回 `REMOTE_REJECTED`——本地两半皆完整，排除项只剩远端重分词。修复已落地：`INSTALL_KEY_COMMAND` 的全部取键处改读 `"$*"`，远端重分词后 `"$*"` 恰好逐字节还原完整公钥（`src/shared/bootstrap.ts` 的源码注释含该论证，busybox ash 与 dash 两个真实 shell 下 `$0`／`$#`／`"$*"` 的行为均实测成立）。「回退到 `$1`」与「形状校验留 `"$*"` 但追加用 `$1`」两种注入缺陷均被对应用例精确抓红（`npm test` 全绿且退出码 0）。
+**远端脚本从 SSH 位置参数重组公钥**：SSH 将远端命令交给远端 shell 重新分词，公钥的多个词因此成为多个位置参数；`INSTALL_KEY_COMMAND` 的形状检查、幂等追加和自证回显均使用 `"$*"`，以单空格重组完整公钥。实现与反例用例见 [`shared/bootstrap.test.ts`](../../projects/dsh-credentials/tests/shared/bootstrap.test.ts) 和 [`host/bootstrap.test.ts`](../../projects/dsh-credentials/tests/host/bootstrap.test.ts)。测试是否通过以实际运行结果为准；本流程不固化一次运行的绿灯结论。
 
-**写错文件这一类缺陷已定位并修复**：取证自真实 openwrt——公钥经 `"$*"` 修复已完整送达并写进 `/root/.ssh/authorized_keys`，但该机的 dropbear 默认读 `/etc/dropbear/authorized_keys`，公钥内容对、文件错，装了也连不上；unraid（OpenSSH）读 `~/.ssh` 所以正常。修法是 `INSTALL_KEY_COMMAND` 双写两个路径（机制见 `BSINSTALL`）。证据面：新增单测以 `bwrap --tmpfs /etc` 加 bind／ro-bind 构造真替身远端（ro-bind 给出真 EROFS），覆盖 dropbear 双写、纯 OpenSSH 单写、dropbear 真不可写静默跳过、形状拒绝时两文件均不写、追加幂等、busybox ash 等价；「不进入 dropbear 分支」与「不可写时不静默跳过」两种注入缺陷各自被对应用例精确抓红（`npm test` 全绿且退出码 0）。
+`INSTALL_KEY_COMMAND` 总是向 `~/.ssh/authorized_keys` 幂等追加；当 `/etc/dropbear` 存在时，也向 `/etc/dropbear/authorized_keys` 尝试幂等追加。Dropbear 路径不可写时该分支跳过，OpenSSH 路径仍可独立成功。当前替身远端测试覆盖 OpenSSH 单写、Dropbear 双写、不可写、形状拒绝、幂等与 shell 兼容路径，见 [`shared/bootstrap.test.ts`](../../projects/dsh-credentials/tests/shared/bootstrap.test.ts)。真实 Dropbear 主机上的端到端重绑定仍需在目标环境验证。
 
 **尚未实测**：真实 openwrt（dropbear）主机上的端到端重绑定——需重启运行中的 dsh 进程加载新代码后做一次真实 rebind，才能确认公钥真的写进 `/etc/dropbear/authorized_keys` 且密钥登录通；此前的证据链只能证明「残缺必被拦下」与「双写逻辑对替身远端成立」，不能证明「完整公钥已送达真实 dropbear 并生效」。
 
-**「远端自证＋宿主比对」判定的证据面**：`INSTALL_KEY_COMMAND` 的形状拦截与自证回显、`remoteKeyEchoProblem` 的比对与「不一致即不落盘」语义由单测守住（`npm test` 全绿且退出码 0），四条注入缺陷的反证各自精确转红对应用例（跳过 echo 校验、删词比对、删 `REMOTE_KEY` 行、删形状拦截）；远端脚本语义经真 shell 直接执行验证（见上段）。
+**远端自证与宿主比对**：`INSTALL_KEY_COMMAND` 输出远端收到的公钥长度与分词；`remoteKeyEchoProblem` 将其与本地公钥比较，不一致时 install 不落本机私钥，rebind 保留本机旧私钥与 config。对应的 transcript 与反例用例见 [`shared/bootstrap.test.ts`](../../projects/dsh-credentials/tests/shared/bootstrap.test.ts) 和 [`host/bootstrap.test.ts`](../../projects/dsh-credentials/tests/host/bootstrap.test.ts)；这两层用例不替代真实 sshd 上的密码认证验收。
 
 **`TARGETS` 证到哪一步，说清楚**：登记表的**读、合并、登记、改名、移除**已取到活体证据——在真实部署端口上，`targets` 返回了 `~/.ssh/config` 里发现的每台机器（`github.com`／`proxy`／`openwrt`，均为 `config-only`），`target-register` 带昵称写入后 `origin` 翻为 `registered` 且条目落在 `$DSH_HOME/settings.yaml` 的 `dsh-credentials` namespace 里，跨重启仍在。**探活也取到了真实证据**：对 `openwrt` 跑 `target-probe` 得 `unauthenticated`，同时独立跑同一条 `ssh` 得 `Permission denied (publickey,password)`，**分类与事实一致**；未知别名被拒且不运行 ssh。
 
 **`TREBIND` 证到哪一步，说清楚**：重绑定的**组合与替换语义**已由单测守住（见下段「已由单测守住的部分」），但两件只有真实环境才能提供的证据没有取到，与 `BSDONE` 那条同一环境边界：① E2E 级的重绑定对**真实 sshd 接受密码**——这台机器构造不出密码认证（原因同上），`npm test` 里以端口替身顶掉「一台会接受密码的服务器」这一件，其余全是本仓库自己的代码，换一台有 root 的机器即可补上；② **真实浏览器里渲染重绑定表单**——按钮对已登记行可见、表单预填登记表的地址端口账号、别名输入框禁用，这些只在纯函数层（`canRebind`／`canRebindScan`／`canRebindSubmit`／`unauthenticatedHint`）被守住，页面把它们组装起来的样子尚未看到。
 
-**重绑定后的探活回流（`TRPROBE`）已由单测守住**：重绑定成功 → 对换上新密钥的别名探活恰好一次 → 重读，这一次序由单测以事件处理器护具守住（提交 `2993f69` 落的 `tests/client/targets-rebind-probe.test.ts`，护具与判据以该文件首部的说明为准——驱动真实的 `TargetRow` 走真实的重绑定流程，以一份共享事件日志的次序为断言面）。它不证明的与既有边界同款：真实的重读循环与浏览器的页面绘制仍归 E2E 层——重读在该护具里是一个探针，只有它与探活的**次序**被断言。
+**重绑定后的探活回流（`TRPROBE`）已由单测守住**：重绑定成功 → 对换上新密钥的别名探活恰好一次 → 重读，这一次序由单测以事件处理器护具守住（当前测试路径为 [`tests/client/targets-rebind-probe.test.ts`](../../projects/dsh-credentials/tests/client/targets-rebind-probe.test.ts)，其首部说明给出用例与断言面）。它不证明的与既有边界同款：真实的重读循环与浏览器的页面绘制仍归 E2E 层——重读在该护具里是一个探针，只有它与探活的**次序**被断言。
 
-**已修但未活体验证的一处**：验证过程中发现——**`IdentityFile` 缺失的机器登记后会在下一次读时消失**，且 `forget` 因同一原因静默无效。根因是 `parseTarget` 拒了合法的空 `keyPath`，已修并补了对应回归用例（`tests/shared/targets.test.ts` 里的「an empty keyPath」两条），`dist/cordis/cred/host-body.js` 里确认含修复。但**它跑起来的样子尚未看到**：本机的 dsh 进程在改动期间无法由沙箱内重启（写 `data/profiles/web/cordis.yml` 得 `EROFS`），故运行中的进程仍是修复前的代码。重启后应复验：没有 `IdentityFile` 的机器能登记并留住。
+没有 `IdentityFile` 的目标允许以空 `keyPath` 登记；`parseTarget` 保留这条记录，探活时不传空 `-i`，让 SSH 使用自身默认身份选择。`forget` 也按登记项删除而不要求 `IdentityFile` 存在。对应解析与往返用例见 [`shared/targets.test.ts`](../../projects/dsh-credentials/tests/shared/targets.test.ts)；真实 profile 重载后的页面表现仍须在目标环境验证。
 
-**已由单测守住的部分**：目录结构不变量、状态映射、写前拒绝、无路径返回值、工具定义的两套 schema 方言形状、两半 RPC 词汇一致、dispose 解挂、两形态端口对 `stdin`/`env` 的传递、适配器入口不写死形态；**新增部分**——目标契约的解析与往返、`~/.ssh/config` 的解析（含 `=` 分隔与大小写混排）、两来源求并集、探活参数与结果分类、登记表服务的全部决策路径、bundle 行 `inject` 的完整覆盖（含新增的 `settings`）、以及**「宿主注册的每个操作都可被 bundle 路由分发」**这道 404 类防复发守卫；**重绑定部分**——组合次序（未知与 `config-only` 别名在引导启动前被拒、登记表事实补齐页面未填的字段、登记记录改指插件按别名派生的路径而非登记表记录的路径、缓存探活只在成功后清、改指失败在远端成功之后报 `ok:true` 带原因）、`BootstrapService.rebind` 的远端优先次序（退出码 255 或无 `INSTALLED` 时旧私钥与 config 逐字节不动）、新公钥确实交给 ssh、**「远端自证＋宿主比对」判定**（`INSTALL_KEY_COMMAND` 的形状拦截在追加前拒绝不含空格的 `"$*"`、追加后回显 `REMOTE_KEYLEN` 与逐词 `REMOTE_KEY`，并为每个实际写入路径回显一行 `REMOTE_WROTE: <path>`；**双写授权文件**（`~/.ssh/authorized_keys` 总写、`/etc/dropbear` 存在时另写 `/etc/dropbear/authorized_keys`、dropbear 路径真不可写时静默跳过、形状拒绝时两文件均不写、两处追加均幂等、busybox ash 等价，替身远端以 `bwrap --tmpfs /etc` 加 bind／ro-bind 构造；「不进入 dropbear 分支」与「不可写时不静默跳过」两种注入缺陷各自抓红）；`expectedKeyEcho`／`parseRemoteKeyEcho` 的解析与宽容度；install 与 rebind 在 `INSTALLED` 之后经 `remoteKeyEchoProblem` 比对，不一致即判失败且 install 不写本机密钥、rebind 不动旧密钥与 config）、**`"$*"` 还原的传递链验证**（真子进程起真实 shell 模拟远端重分词形态：三词公钥经 `"$*"` 还原后 `authorized_keys` 逐字节一致、回显与本地一致、残缺单词仍被 `REMOTE_REJECTED` 拦下、追加幂等，busybox ash 与 dash 双 shell 均成立；「回退 `$1`」与「校验留 `"$*"` 而追加用 `$1`」两种注入缺陷各自被对应用例抓红）、密码生命周期（不进 argv、不进环境变量、600 临时文件成功失败抛错三条路都删）、`replaceIdentityFileLine` 的保留语义（只改 `IdentityFile` 行，手写的 `ProxyJump`／`Port` 逐字保留；段内无该行则插入，无该段返回 `undefined`，前缀别名不误配）、门控助手（`canRebind` 只对 `registered` 行真、`unauthenticatedHint` 点名重新绑定、`canRebindSubmit` 拒绝未确认指纹的提交）、`target-rebind` 在 `OPERATIONS` 里（404 守卫）、以及 `clearProbe`／`recordKeyPath` 的决策路径；**重绑定后的探活回流**——成功后对换上新密钥的别名探活恰好一次、探活先于重读、失败的重绑定不探活不重读、成功文案不再让用户去点「检测连接」、探活通道失败不否认重绑定的成功展示（提交 `2993f69` 补的事件处理器护具所守，用例清单以 `tests/client/targets-rebind-probe.test.ts` 为准）。跑法与判据见 [tests/README.md](dsh-credentials/tests/README.md)：`npm test`，判据为全绿且退出码 0。
+**已由单测守住的部分**：目录结构不变量、状态映射、写前拒绝、无路径返回值、工具定义的两套 schema 方言形状、两半 RPC 词汇一致、dispose 解挂、两形态端口对 `stdin`/`env` 的传递、适配器入口不写死形态；**目标与登记**——目标契约的解析与往返、`~/.ssh/config` 的解析（含 `=` 分隔与大小写混排）、两来源求并集、探活参数与结果分类、登记表服务的全部决策路径、bundle 行 `inject` 的完整覆盖（含新增的 `settings`）、以及**「宿主注册的每个操作都可被 bundle 路由分发」**这道 404 类防复发守卫；**重绑定部分**——组合次序（未知与 `config-only` 别名在引导启动前被拒、登记表事实补齐页面未填的字段、登记记录改指插件按别名派生的路径而非登记表记录的路径、缓存探活只在成功后清、改指失败在远端成功之后报 `ok:true` 带原因）、`BootstrapService.rebind` 的远端优先次序（退出码 255 或无 `INSTALLED` 时旧私钥与 config 逐字节不动）、新公钥确实交给 ssh、**「远端自证＋宿主比对」判定**（`INSTALL_KEY_COMMAND` 的形状拦截在追加前拒绝不含空格的 `"$*"`、追加后回显 `REMOTE_KEYLEN` 与逐词 `REMOTE_KEY`，并为每个实际写入路径回显一行 `REMOTE_WROTE: <path>`；**双写授权文件**（`~/.ssh/authorized_keys` 总写、`/etc/dropbear` 存在时另写 `/etc/dropbear/authorized_keys`、dropbear 路径真不可写时静默跳过、形状拒绝时两文件均不写、两处追加均幂等、busybox ash 等价，替身远端以 `bwrap --tmpfs /etc` 加 bind／ro-bind 构造；「不进入 dropbear 分支」与「不可写时不静默跳过」两种注入缺陷各自抓红）；`expectedKeyEcho`／`parseRemoteKeyEcho` 的解析与宽容度；install 与 rebind 在 `INSTALLED` 之后经 `remoteKeyEchoProblem` 比对，不一致即判失败且 install 不写本机密钥、rebind 不动旧密钥与 config）、**`"$*"` 还原的传递链验证**（真子进程起真实 shell 模拟远端重分词形态：三词公钥经 `"$*"` 还原后 `authorized_keys` 逐字节一致、回显与本地一致、残缺单词仍被 `REMOTE_REJECTED` 拦下、追加幂等，busybox ash 与 dash 双 shell 均成立；「回退 `$1`」与「校验留 `"$*"` 而追加用 `$1`」两种注入缺陷各自被对应用例抓红）、密码生命周期（不进 argv、不进环境变量、600 临时文件成功失败抛错三条路都删）、`replaceIdentityFileLine` 的保留语义（只改 `IdentityFile` 行，手写的 `ProxyJump`／`Port` 逐字保留；段内无该行则插入，无该段返回 `undefined`，前缀别名不误配）、门控助手（`canRebind` 只对 `registered` 行真、`unauthenticatedHint` 点名重新绑定、`canRebindSubmit` 拒绝未确认指纹的提交）、`target-rebind` 在 `OPERATIONS` 里（404 守卫）、以及 `clearProbe`／`recordKeyPath` 的决策路径；**重绑定后的探活回流**——成功后对换上新密钥的别名探活恰好一次、探活先于重读、失败的重绑定不探活不重读、成功文案不再让用户去点「检测连接」、探活通道失败不否认重绑定的成功展示（由 [`tests/client/targets-rebind-probe.test.ts`](../../projects/dsh-credentials/tests/client/targets-rebind-probe.test.ts) 覆盖，用例清单以该测试文件为准）。用例归位见 [tests/README.md](../../projects/dsh-credentials/tests/README.md)；实际运行结果以当次命令输出为准。
 
-**`report()` 落盘通道已由单测守住**：路径解析（缺省/空串回退 `~/.dsh`）、行格式（ISO 时间戳 + level + 消息、换行折叠为字面 `\n`）、落盘次序（先落盘再走 logger）、两形态的降级（写失败静默不抛、cordis 侧 `shell` 缺失时只走 logger）、密码金丝雀不入日志——见 `tests/host/adapters/file-log.test.ts` 及两形态适配器的对应用例。但**「真实运行中的 dsh 进程落盘」未实测**：运行中的 dsh 进程尚未重启加载这段落盘代码，重启后一次真实的 install/rebind 才能确认 `$DSH_HOME/logs/dsh-credentials.log` 在真实部署被写入。
+**`report()` 落盘通道已由单测守住**：路径解析（缺省/空串回退 `~/.dsh`）、行格式（ISO 时间戳 + level + 消息、换行折叠为字面 `\n`）、落盘次序（先落盘再走 logger）、两形态的降级（持久日志失败时发出不含报告正文的 stderr 警告并继续走 logger，Cordis 侧 `shell` 缺失或拒绝时也发警告且不阻断操作）、密码金丝雀不入日志——见 `tests/host/adapters/file-log.test.ts` 及两形态适配器的对应用例。但**「真实运行中的 dsh 进程落盘」未实测**：运行中的 dsh 进程尚未重启加载这段落盘代码，重启后一次真实的 install/rebind 才能确认 `$DSH_HOME/logs/dsh-credentials.log` 在真实部署被写入。
