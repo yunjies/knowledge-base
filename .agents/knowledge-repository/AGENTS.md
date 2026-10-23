@@ -19,8 +19,8 @@
 
 | 文档 | 性质 | 何时读 |
 | --- | --- | --- |
-| [领域 agent 脚手架规范](../domain-agents/spec.md) | 规范册 | 设计或判定单领域、脚本驱动、通过宿主工具取用领域知识的 subagent 时 |
-| [领域 agent 实例模板](../domain-agents/template/README.md) | 实例模板 | 为知识库操作领域建立宿主工具包、结构化数据与审核工作流时 |
+| [领域 agent 脚手架规范](../domain-agents/spec.md) | 规范册 | 设计或判定通用领域 agent 调用、领域知识装配与宿主工具边界时 |
+| [通用领域 agent 脚手架](../domain-agents/template/README.md) | 通用脚手架 | 维护共用指令、工具 handler、schema 与通用测试时 |
 | [agent-constraints.md](agent-constraints.md) | 规则册 | 为规范性结论选取论据、撰写或维护源码、为方案作取舍、判断某种替代是否成立时 |
 | [audit-perspectives.md](audit-perspectives.md) | 规范册 | 领审核任务、需要取本轮启用的视角集合时 |
 | [notes/audit-record-loop-flow.md](notes/audit-record-loop-flow.md) | 流程 | 执行多视角审核循环、判去重、修复与终止条件时 |

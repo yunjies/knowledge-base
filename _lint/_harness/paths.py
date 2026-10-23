@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".uv-cache", ".agents", ".worktrees", ".sessions"}
+SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".uv-cache", ".agents", ".worktrees"}
 
 # `.agents/` is not a layer of this knowledge base: it is a skill distribution
 # root, scanned by the harness rather than read as knowledge-base documentation.
@@ -25,11 +25,10 @@ SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".
 # repository's writing constraints would report failures whose cause has nothing
 # to do with this repository's documents.
 
-# A project's own checkout is another repository with its own history and
-# conventions; the knowledge base states that its internal layout is the
-# project's decision. Its documents are therefore read here, never judged: the
-# flow document the knowledge base owns sits *beside* the checkout, not inside
-# it, and that is the one this suite checks.
+# Legacy project containers have their checkout at the second directory level.
+# New direct checkouts are identified by the `.git` marker at the first level.
+# Project-owned docs outside either checkout remain in this suite's scan.
+
 CHECKOUT_PATTERN = re.compile(r"^assets/projects/[^/]+/[^/]+/")
 
 # A document is a flow document when it carries a mermaid graph. The criterion is
@@ -47,8 +46,18 @@ def repository_root() -> Path:
 
 
 def is_inside_checkout(path: Path) -> bool:
-    """Report whether the document belongs to an included project's checkout."""
-    return bool(CHECKOUT_PATTERN.match(str(path.relative_to(repository_root()))))
+    """Report whether a path is inside a Git checkout under assets/projects."""
+    root = repository_root()
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    if CHECKOUT_PATTERN.match(relative.as_posix() + ("/" if path.is_dir() else "")):
+        return True
+    if relative.parts[:2] != ("assets", "projects") or len(relative.parts) < 3:
+        return False
+    direct_checkout = root / "assets" / "projects" / relative.parts[2]
+    return (direct_checkout / ".git").exists()
 
 
 

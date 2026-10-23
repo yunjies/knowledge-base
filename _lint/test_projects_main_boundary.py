@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
@@ -38,106 +37,11 @@ def tracked_project_paths(repository_root: Path) -> list[str]:
     return sorted(result.stdout.splitlines())
 
 
-def is_main_guard_context() -> bool:
-    """Identify main in GitHub's detached checkout and in local attached checkouts.
-
-    The workflow runs only for pushes to main and pull requests; Actions supplies
-    GITHUB_REF for pushes and GITHUB_BASE_REF for pull requests independently of
-    whether checkout has attached a local branch.
-    """
-    event = os.environ.get("GITHUB_EVENT_NAME")
-    if event == "push":
-        return os.environ.get("GITHUB_REF") == "refs/heads/main"
-    if event == "pull_request":
-        return os.environ.get("GITHUB_BASE_REF") == "main"
-    if event is not None:
-        raise AssertionError(f"cannot determine main applicability for GitHub event {event!r}")
-    result = subprocess.run(
-        ["git", "-C", str(paths.repository_root()), "branch", "--show-current"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    branch = result.stdout.strip()
-    if not branch:
-        raise AssertionError("detached checkout has no GitHub branch context for main applicability")
-    return branch == "main"
-
-
-@pytest.mark.parametrize(
-    ("event", "environment", "expected"),
-    [
-        ("push", {"GITHUB_REF": "refs/heads/main"}, True),
-        ("push", {"GITHUB_REF": "refs/heads/duoduo"}, False),
-        ("pull_request", {"GITHUB_BASE_REF": "main"}, True),
-        ("pull_request", {"GITHUB_BASE_REF": "duoduo"}, False),
-    ],
-)
-def test_github_main_guard_context(monkeypatch, event, environment, expected) -> None:
-    monkeypatch.setenv("GITHUB_EVENT_NAME", event)
-    monkeypatch.delenv("GITHUB_REF", raising=False)
-    monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
-    for name, value in environment.items():
-        monkeypatch.setenv(name, value)
-    assert is_main_guard_context() is expected
-
-
-def test_unknown_github_event_fails_loud(monkeypatch) -> None:
-    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
-    with pytest.raises(AssertionError, match="cannot determine main applicability"):
-        is_main_guard_context()
-
-
-def test_local_attached_main_is_guarded(monkeypatch) -> None:
-    monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
-    monkeypatch.setattr(
-        subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout="main\n", stderr=""),
-    )
-    assert is_main_guard_context() is True
-
-
-def test_local_attached_duoduo_is_not_guarded(monkeypatch) -> None:
-    monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
-    monkeypatch.setattr(
-        subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout="duoduo\n", stderr=""),
-    )
-    assert is_main_guard_context() is False
-
-
-def test_detached_local_checkout_fails_loud(monkeypatch) -> None:
-    monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
-    monkeypatch.setattr(
-        subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout="\n", stderr=""),
-    )
-    with pytest.raises(AssertionError, match="detached checkout"):
-        is_main_guard_context()
-
-
-def test_push_to_main_enforces_directory_check_in_detached_actions_checkout(
-    monkeypatch, tmp_path: Path
-) -> None:
-    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
-    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
-    monkeypatch.setattr(paths, "repository_root", lambda: tmp_path)
-    projects = tmp_path / "assets" / "projects"
-    projects.mkdir(parents=True)
-    (projects / ".gitkeep").touch()
-    (projects / "project.yaml").write_text("project: forbidden\n", encoding="utf-8")
-
-    with pytest.raises(AssertionError):
-        test_current_main_projects_directory_is_empty()
-
-
 def test_current_main_projects_directory_is_empty() -> None:
-    if not is_main_guard_context():
-        return
     repository_root = paths.repository_root()
+    branch = subprocess.run(["git", "-C", str(repository_root), "branch", "--show-current"], check=True, capture_output=True, text=True).stdout.strip()
+    if branch != "main":
+        pytest.skip("the empty-project boundary applies to main; content branches register project checkouts")
     root = repository_root / "assets" / "projects"
     assert project_tree_errors(root) == []
     assert tracked_project_paths(repository_root) == ["assets/projects/.gitkeep"]

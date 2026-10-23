@@ -1,97 +1,91 @@
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
 import { test } from "node:test"
-import { advanceReview, applyKnowledgeOperation, beginReview, DomainToolError, validateRelativePath } from "../scripts/engine.js"
+import { DomainToolError, isSafeIdentifier, pathPolicyAllows, pathPolicyMayContain, validateDomainCatalog, validateDomainManifest, validateRelativePath } from "../scripts/engine.js"
 
-const workflow = JSON.parse(await readFile(new URL("../data/review-workflow.json", import.meta.url), "utf8"))
-
-function store() {
-  return { schemaVersion: 1, domainId: "knowledge-base-operations", revision: 0, records: [] }
-}
-
-test("review workflow starts at its registered start stage", () => {
-  const state = beginReview(workflow)
-  assert.equal(state.currentStage, workflow.startStage)
-  assert.equal(state.workflowId, workflow.workflowId)
-})
-
-test("review workflow rejects an undeclared transition", () => {
-  const state = beginReview(workflow)
-  assert.throws(() => advanceReview(workflow, state, { outcome: "complete", fields: {} }), error => error instanceof DomainToolError && error.code === "INVALID_TRANSITION")
-})
-
-test("review workflow rejects a forged stage skip", () => {
-  const state = { ...beginReview(workflow), currentStage: "convergence" }
-  assert.throws(() => advanceReview(workflow, state, { outcome: "converged", fields: { convergenceResult: "pass" } }), error => error instanceof DomainToolError && error.code === "INVALID_REVIEW_STATE")
-})
-
-test("review workflow rejects missing required stage output", () => {
-  let state = beginReview(workflow)
-  state = advanceReview(workflow, state, { outcome: "ready", fields: { baselineRef: "baseline-1" } })
-  assert.equal(state.currentStage, "dispatch")
-  assert.throws(() => advanceReview(workflow, state, { outcome: "complete", fields: { perspectiveSet: [] } }), error => error instanceof DomainToolError && error.code === "MISSING_STAGE_OUTPUT")
-})
-
-test("review workflow requires the leader-owned dispatch outputs", () => {
-  const dispatch = workflow.stages.find(stage => stage.id === "dispatch")
-  assert.equal(dispatch.delegationOwner, "session-leader")
-  assert.deepEqual(dispatch.requiredResultFields, ["perspectiveSet", "reviewerResults"])
-})
-
-test("review workflow rejects an empty reviewer result set", () => {
-  let state = beginReview(workflow)
-  state = advanceReview(workflow, state, { outcome: "ready", fields: { baselineRef: "baseline-1" } })
-  assert.throws(() => advanceReview(workflow, state, {
-    outcome: "complete",
-    fields: { perspectiveSet: ["AP-01"], reviewerResults: [] }
-  }), error => error instanceof DomainToolError && error.code === "MISSING_STAGE_OUTPUT")
-})
-
-test("knowledge store creates and retrieves a structured record", () => {
-  const created = applyKnowledgeOperation(store(), {
-    action: "create",
-    record: { id: "policy-1", title: "Policy", body: "Use a registered tool", tags: ["access"] }
-  })
-  assert.equal(created.result.record.revision, 1)
-  const retrieved = applyKnowledgeOperation(created.store, { action: "get", recordId: "policy-1" })
-  assert.equal(retrieved.result.record.body, "Use a registered tool")
-})
-
-test("knowledge store rejects a stale update and preserves the record", () => {
-  const created = applyKnowledgeOperation(store(), {
-    action: "create",
-    record: { id: "policy-1", title: "Policy", body: "Original" }
-  })
-  assert.throws(() => applyKnowledgeOperation(created.store, {
-    action: "update",
-    recordId: "policy-1",
-    expectedRevision: 0,
-    record: { title: "Policy", body: "Changed" }
-  }), error => error instanceof DomainToolError && error.code === "STALE_RECORD_VERSION")
-  assert.equal(created.store.records[0].body, "Original")
-})
-
-test("knowledge store requires a version for deletion", () => {
-  const created = applyKnowledgeOperation(store(), {
-    action: "create",
-    record: { id: "policy-1", title: "Policy", body: "Original" }
-  })
-  assert.throws(() => applyKnowledgeOperation(created.store, { action: "delete", recordId: "policy-1" }), error => error instanceof DomainToolError && error.code === "STALE_RECORD_VERSION")
-})
-
-test("knowledge store rejects duplicate record identities", () => {
-  const duplicateStore = {
-    ...store(),
-    records: [
-      { id: "same-id", title: "One", body: "First", tags: [], revision: 1 },
-      { id: "same-id", title: "Two", body: "Second", tags: [], revision: 1 }
+function manifest() {
+  return {
+    schemaVersion: 1,
+    domainId: "sample-domain",
+    resources: [
+      { id: "flow", kind: "implemented-flow", title: "Flow", path: "assets/domain-knowledge/sample-domain/flow.md", format: "markdown", maxBytes: 10000 },
+      { id: "domain-tests", kind: "domain-knowledge-test-entry", title: "Domain tests", path: "assets/domain-knowledge/sample-domain/tests/README.md", format: "markdown", maxBytes: 10000 }
+    ],
+    repositories: [
+      { id: "sample-repo", root: "assets/projects/sample-repo", readPaths: ["README.md", "src/**"], denyPaths: [".git/**", "src/.env*"], maxFileBytes: 50000, maxLines: 200 }
+    ],
+    operationMethods: [
+      { id: "github-remote", repositoryId: "sample-repo", methodId: "github-cli", resourceIds: ["flow"] },
+      { id: "domain-knowledge-validation", repositoryId: "sample-repo", methodId: "pytest", resourceIds: ["domain-tests"] }
+    ],
+    changeKinds: [
+      { id: "source-change", layers: ["static"], resourceIds: ["flow"] },
+      { id: "domain-knowledge", layers: ["lint"], resourceIds: ["domain-tests"] }
     ]
   }
-  assert.throws(() => applyKnowledgeOperation(duplicateStore, { action: "list" }), error => error instanceof DomainToolError && error.code === "INVALID_STORE")
+}
+
+test("relative paths and identifiers reject unbounded values", () => {
+  assert.equal(validateRelativePath("src/host/index.ts"), "src/host/index.ts")
+  assert.throws(() => validateRelativePath("/etc/passwd"), error => error instanceof DomainToolError && error.code === "PATH_REJECTED")
+  assert.throws(() => validateRelativePath("src/../secret"), error => error instanceof DomainToolError && error.code === "PATH_REJECTED")
+  assert.equal(isSafeIdentifier("dsh-credentials"), true)
+  assert.equal(isSafeIdentifier("../secret"), false)
 })
 
-test("path validation rejects absolute and traversal paths", () => {
-  assert.throws(() => validateRelativePath("/etc/passwd"), error => error instanceof DomainToolError && error.code === "PATH_REJECTED")
-  assert.throws(() => validateRelativePath("data/../secret.json"), error => error instanceof DomainToolError && error.code === "PATH_REJECTED")
-  assert.throws(() => validateRelativePath("data\\secret.json"), error => error instanceof DomainToolError && error.code === "PATH_REJECTED")
+test("domain catalog rejects duplicate identities and unsafe manifest paths", () => {
+  const catalog = { schemaVersion: 1, domains: [{ id: "sample-domain", title: "Sample", repositoryIds: ["sample-repo"], manifestPath: "sample-domain/data/manifest.json" }] }
+  assert.equal(validateDomainCatalog(catalog), catalog)
+  assert.throws(() => validateDomainCatalog({ ...catalog, domains: [...catalog.domains, catalog.domains[0]] }), error => error.code === "INVALID_DOMAIN_CATALOG")
+  assert.throws(() => validateDomainCatalog({ ...catalog, domains: [{ ...catalog.domains[0], manifestPath: "../manifest.json" }] }), error => error.code === "INVALID_DOMAIN_CATALOG")
+})
+
+test("domain manifest resolves stable resource and method mappings", () => {
+  const value = manifest()
+  const result = validateDomainManifest(value, "sample-domain")
+  assert.equal(result.resources.get("flow").path, "assets/domain-knowledge/sample-domain/flow.md")
+  assert.equal(result.repositories.get("sample-repo").root, "assets/projects/sample-repo")
+  assert.throws(() => validateDomainManifest(value, "other-domain"), error => error.code === "DOMAIN_MISMATCH")
+})
+
+test("domain manifest requires one standard domain-knowledge lint contract", () => {
+  const missingTestResource = manifest()
+  missingTestResource.resources = missingTestResource.resources.filter(resource => resource.id !== "domain-tests")
+  assert.throws(() => validateDomainManifest(missingTestResource, "sample-domain"), error => error.code === "INVALID_DOMAIN_MANIFEST")
+
+  const missingOperation = manifest()
+  missingOperation.operationMethods = missingOperation.operationMethods.filter(operation => operation.id !== "domain-knowledge-validation")
+  assert.throws(() => validateDomainManifest(missingOperation, "sample-domain"), error => error.code === "INVALID_DOMAIN_MANIFEST")
+
+  const missingChangeKind = manifest()
+  missingChangeKind.changeKinds = missingChangeKind.changeKinds.filter(changeKind => changeKind.id !== "domain-knowledge")
+  assert.throws(() => validateDomainManifest(missingChangeKind, "sample-domain"), error => error.code === "INVALID_DOMAIN_MANIFEST")
+
+  const wrongMethod = manifest()
+  wrongMethod.operationMethods.find(operation => operation.id === "domain-knowledge-validation").methodId = "manual"
+  assert.throws(() => validateDomainManifest(wrongMethod, "sample-domain"), error => error.code === "INVALID_DOMAIN_MANIFEST")
+})
+
+test("domain manifest rejects traversal, duplicate methods, and cross-repository mappings", () => {
+  const unsafePath = manifest()
+  unsafePath.resources[0].path = "assets/domain-knowledge/../private.md"
+  assert.throws(() => validateDomainManifest(unsafePath, "sample-domain"), error => error.code === "INVALID_DOMAIN_MANIFEST")
+  const duplicate = manifest()
+  duplicate.operationMethods.push({ ...duplicate.operationMethods[0] })
+  assert.throws(() => validateDomainManifest(duplicate, "sample-domain"), error => error.code === "INVALID_DOMAIN_MANIFEST")
+  const crossRepo = manifest()
+  crossRepo.operationMethods[0].repositoryId = "unknown-repo"
+  assert.throws(() => validateDomainManifest(crossRepo, "sample-domain"), error => error.code === "INVALID_DOMAIN_MANIFEST")
+  const writeCapability = manifest()
+  writeCapability.writeTargets = [{ id: "records", path: "data/store.json", operations: ["update"], versionGuarded: true }]
+  assert.throws(() => validateDomainManifest(writeCapability, "sample-domain"), error => error.code === "INVALID_DOMAIN_MANIFEST")
+})
+
+test("repository policy permits only registered paths and denies sensitive patterns", () => {
+  const repository = manifest().repositories[0]
+  assert.equal(pathPolicyAllows("src/host/tool.ts", repository), true)
+  assert.equal(pathPolicyAllows("README.md", repository), true)
+  assert.equal(pathPolicyAllows("tests/README.md", repository), false)
+  assert.equal(pathPolicyAllows("src/.env.local", repository), false)
+  assert.equal(pathPolicyMayContain("src", repository), true)
+  assert.equal(pathPolicyMayContain("node_modules", repository), false)
 })

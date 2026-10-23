@@ -76,7 +76,18 @@
 
 工程根目录树、各目录职责、基础框架与仓库业务的分支边界、资产边界及项目内容阅读顺序见[知识库目录结构](knowledge-repository/directory-structure.md)，本节的目录地图以该文为准。跨项目通用规则与审核流程归 `.agents/knowledge-repository/`；随技能分发的判据册归 `.agents/skills/`；本知识库专有的边界、方法和操作说明归 `knowledge-repository/`。基础框架只以 `main` 为权威；框架变更须从 `main` 基线隔离开发并以 `main` 为 PR base，不与仓库业务内容捆绑。
 
-任何创建、修改、删除或移动 `assets/projects/<项目>/` 文件的需求，都必须先在 `assets/inbox/` 新建或续办需求，并按[需求流程模板](assets/inbox/template.md)执行。项目内容路径与分支阅读顺序见[知识库目录结构](knowledge-repository/directory-structure.md)；需求准入和归档规则见[收件箱 README](assets/inbox/README.md)与[归档 README](assets/archive/README.md)。Git 提交、同步或 GitHub 操作按[版本管理技能](.agents/skills/version-management/SKILL.md)执行。
+任何创建、修改、删除或移动 `assets/domain-knowledge/<领域标识>/` 或 `assets/projects/<仓库标识>/` 下文件的需求，都必须先在 `assets/inbox/` 新建或续办需求，再按[需求流程模板](assets/inbox/template.md)执行；小改、知识与源码改动均适用。领域流程和必要的 DSH 集成索引归领域知识目录，源码和项目测试归独立仓库，通用 audit 流程只维护在 `.agents/knowledge-repository/`。领域知识与项目源码路径见[知识库目录结构](knowledge-repository/directory-structure.md)；项目需求准入和归档规则见[收件箱 README](assets/inbox/README.md)与[归档 README](assets/archive/README.md)。Git 提交、同步或 GitHub 操作按[版本管理技能](.agents/skills/version-management/SKILL.md)执行。
+
+### 领域工作先交给领域 agent
+
+`assets/domain-knowledge/` 与 `assets/projects/` 的事实读取、核对与领域审核，先交给领域 agent，不要由主 agent 直接用 read、bash、grep 自行遍历这两个目录。
+
+- **优先调用专用领域工具**：若工具面同时有 `list_domain_knowledge` 与 `run_domain_agent`，先列出领域，再向对应领域 agent 下发自包含任务，并以其证据作为领域事实输入。
+- **专用工具不可用时先委派通用 subagent**：若当前工具面没有专用领域工具但有 `subagent`，用 `subagent` 委派领域读取或审核；任务须明确只读、目标领域/仓库、具体问题、证据格式与拒绝越界要求，并要求返回路径及行范围。leader 不得为了补足证据而自行读取领域目录。此方式只靠提示词约束，不提供专用领域工具的路径授权隔离；不得把它描述为安全边界。
+- **无法委派时停止领域访问**：若专用工具与 `subagent` 均不可用，报告缺失并停止该领域任务；不得由主 agent 直接读取、搜索或修改领域知识及源码仓库。只有用户在获知限制后明确授权本次直接访问，才可作为例外，并说明这是绕过委派流程的临时访问。
+- **写入仍归主 agent**：worker 只提交变更建议；主 agent 按上文需求流程落笔。
+
+判据：领域任务需要读取知识或源码时，leader 必须使用专用领域工具；专用工具不可用时必须使用 `subagent` 委派，二者均不可用才停止。未经用户明确授权，leader 不得自行直接读取或搜索 `assets/domain-knowledge/`、`assets/projects/`。
 
 ### 部署与验收
 

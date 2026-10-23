@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Knowledge Base Operations Agent",
-    "description": "Scoped tools for knowledge-base policies, structured knowledge, testing guidance, and review workflow."
+    "title": "Domain Agent Coordinator",
+    "description": "Selects registered domain knowledge and runs one-shot workers with scoped knowledge and source-reading tools."
   }
 }
