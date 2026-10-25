@@ -1,3 +1,6 @@
 [submodule "assets/projects/dsh-settings-trusted-authority/dsh-settings-trusted-authority"]
 	path = assets/projects/dsh-settings-trusted-authority/dsh-settings-trusted-authority
 	url = https://github.com/yunjies/dsh-settings-trusted-authority.git
+[submodule "assets/projects/docker-for-dsh"]
+	path = assets/projects/docker-for-dsh
+	url = git@github.com:yunjies/docker-for-dsh.git

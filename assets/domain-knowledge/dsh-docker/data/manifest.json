@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "domainId": "dsh-docker",
+  "resources": [
+    {
+      "id": "domain-overview",
+      "kind": "domain-overview",
+      "title": "DSH Docker domain overview",
+      "path": "assets/domain-knowledge/dsh-docker/README.md",
+      "format": "markdown",
+      "maxBytes": 100000
+    },
+    {
+      "id": "deployment",
+      "kind": "deployment",
+      "title": "DSH Docker deployment contract",
+      "path": "assets/domain-knowledge/dsh-docker/deploy.md",
+      "format": "markdown",
+      "maxBytes": 100000
+    },
+    {
+      "id": "domain-tests",
+      "kind": "domain-knowledge-test-entry",
+      "title": "DSH Docker domain tests",
+      "path": "assets/domain-knowledge/dsh-docker/tests/README.md",
+      "format": "markdown",
+      "maxBytes": 50000
+    }
+  ],
+  "repositories": [
+    {
+      "id": "docker-for-dsh",
+      "root": "assets/projects/docker-for-dsh",
+      "readPaths": [
+        "README.md",
+        "Dockerfile",
+        "bootstrap.sh",
+        "dsh-web-runner.mjs",
+        "dsh-home.patch.yml",
+        "unraid/dsh.xml",
+        ".github/workflows/publish.yml",
+        "tests/**"
+      ],
+      "denyPaths": [
+        ".git/**",
+        "**/.env*",
+        "**/appdata/**",
+        "**/workspace/**",
+        "**/*credential*",
+        "**/*secret*",
+        "**/*.log"
+      ],
+      "maxFileBytes": 500000,
+      "maxLines": 200
+    }
+  ],
+  "operationMethods": [
+    {
+      "id": "domain-knowledge-validation",
+      "repositoryId": "docker-for-dsh",
+      "methodId": "pytest",
+      "resourceIds": ["domain-tests"]
+    },
+    {
+      "id": "github-image-release",
+      "repositoryId": "docker-for-dsh",
+      "methodId": "github-actions",
+      "resourceIds": ["deployment"]
+    },
+    {
+      "id": "unraid-template-deployment",
+      "repositoryId": "docker-for-dsh",
+      "methodId": "unraid-template",
+      "resourceIds": ["deployment"]
+    }
+  ],
+  "changeKinds": [
+    {
+      "id": "domain-knowledge",
+      "layers": ["lint"],
+      "resourceIds": ["domain-tests"]
+    },
+    {
+      "id": "docker-source",
+      "layers": ["lint", "static", "live", "external"],
+      "resourceIds": ["deployment", "domain-tests"]
+    }
+  ]
+}
