@@ -80,6 +80,8 @@ def _walk(root: Path):
         except OSError:
             continue
         for entry in entries:
+            if directory == root and entry.name == ".sessions":
+                continue
             if entry.is_dir():
                 if entry.name in SKIP_DIRS:
                     continue

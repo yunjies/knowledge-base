@@ -29,6 +29,7 @@ GATE_FLOOR = {
     "test_inbox_contract.py": 4,
     "test_projects_main_boundary.py": 12,
     "test_domain_agent_scaffold.py": 14,
+    "test_sessions_scanner.py": 1,
     "test_suite_integrity.py": 4,
 }
 
