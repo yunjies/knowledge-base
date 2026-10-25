@@ -6,161 +6,165 @@ export class DomainToolError extends Error {
   }
 }
 
-export function beginReview(workflow) {
-  if (!workflow || !Array.isArray(workflow.stages)) throw new DomainToolError("INVALID_WORKFLOW", "workflow stages are missing")
-  const start = workflow.stages.find(stage => stage.id === workflow.startStage)
-  if (!start) throw new DomainToolError("INVALID_WORKFLOW", "workflow start stage is not registered")
-  return {
-    workflowId: workflow.workflowId,
-    currentStage: start.id,
-    completedStages: [],
-    evidence: []
-  }
-}
-
-function validateReviewState(workflow, state) {
-  if (state?.workflowId !== workflow?.workflowId) throw new DomainToolError("WORKFLOW_MISMATCH", "review state belongs to another workflow")
-  if (!Array.isArray(state.completedStages) || !Array.isArray(state.evidence)) throw new DomainToolError("INVALID_REVIEW_STATE", "review history and evidence must be arrays")
-  const stages = new Map((workflow?.stages ?? []).map(stage => [stage.id, stage]))
-  let expectedStage = workflow.startStage
-  for (const completed of state.completedStages) {
-    const stage = stages.get(expectedStage)
-    if (!stage || completed?.id !== expectedStage || typeof completed.outcome !== "string") throw new DomainToolError("INVALID_REVIEW_STATE", "completed stages do not follow the registered workflow")
-    const next = stage.transitions?.[completed.outcome]
-    if (!next) throw new DomainToolError("INVALID_REVIEW_STATE", `outcome ${completed.outcome} is not valid for ${stage.id}`)
-    const fields = completed.fields && typeof completed.fields === "object" && !Array.isArray(completed.fields) ? completed.fields : {}
-    validateStageFields(stage, completed.outcome, fields, "INVALID_REVIEW_STATE")
-    expectedStage = next
-  }
-  if (state.currentStage !== expectedStage) throw new DomainToolError("INVALID_REVIEW_STATE", "current stage does not follow the completed workflow history")
-  if (expectedStage === workflow.terminalStage && state.status !== "complete") throw new DomainToolError("INVALID_REVIEW_STATE", "completed workflow status is inconsistent")
-  if (expectedStage === "halt" && state.status !== "blocked") throw new DomainToolError("INVALID_REVIEW_STATE", "blocked workflow status is inconsistent")
-  if (expectedStage !== workflow.terminalStage && expectedStage !== "halt" && state.status !== undefined && state.status !== "in_progress") throw new DomainToolError("INVALID_REVIEW_STATE", "in-progress workflow status is inconsistent")
-  if (expectedStage === workflow.terminalStage || expectedStage === "halt") throw new DomainToolError("REVIEW_FINISHED", "completed or blocked review cannot be advanced")
-}
-
-function validateStageFields(stage, outcome, fields, failureCode) {
-  if (outcome === "blocked") return
-  const required = stage.requiredResultFields ?? []
-  const missing = required.filter(key => !(key in fields))
-  if (missing.length > 0) throw new DomainToolError(failureCode, `stage ${stage.id} is missing: ${missing.join(", ")}`)
-  for (const [key, constraint] of Object.entries(stage.fieldConstraints ?? {})) {
-    if (!required.includes(key) || !(key in fields)) throw new DomainToolError("INVALID_WORKFLOW", `field constraint ${key} is not paired with a required result field`)
-    const value = fields[key]
-    const typeMatches = {
-      string: typeof value === "string",
-      array: Array.isArray(value),
-      object: typeof value === "object" && value !== null && !Array.isArray(value),
-      number: typeof value === "number" && Number.isFinite(value),
-      integer: Number.isSafeInteger(value),
-      boolean: typeof value === "boolean"
-    }
-    if (!typeMatches[constraint.type]) throw new DomainToolError(failureCode, `stage ${stage.id} field ${key} must have type ${constraint.type}`)
-    if (constraint.minLength !== undefined && value.length < constraint.minLength) throw new DomainToolError(failureCode, `stage ${stage.id} field ${key} is too short`)
-    if (constraint.minItems !== undefined && value.length < constraint.minItems) throw new DomainToolError(failureCode, `stage ${stage.id} field ${key} has too few items`)
-    if (constraint.enum && !constraint.enum.includes(value)) throw new DomainToolError(failureCode, `stage ${stage.id} field ${key} has an unregistered value`)
-  }
-}
-
-export function advanceReview(workflow, state, submission) {
-  validateReviewState(workflow, state)
-  const stages = new Map((workflow?.stages ?? []).map(stage => [stage.id, stage]))
-  const current = stages.get(state.currentStage)
-  if (!current) throw new DomainToolError("INVALID_REVIEW_STATE", "current stage is not registered")
-  if (!submission || typeof submission.outcome !== "string") throw new DomainToolError("INVALID_SUBMISSION", "submission outcome is required")
-  const nextStageId = current.transitions?.[submission.outcome]
-  if (!nextStageId) throw new DomainToolError("INVALID_TRANSITION", `outcome ${submission.outcome} is not allowed from ${current.id}`)
-  const fields = submission.fields && typeof submission.fields === "object" && !Array.isArray(submission.fields) ? submission.fields : {}
-  validateStageFields(current, submission.outcome, fields, "MISSING_STAGE_OUTPUT")
-  const completedStages = [...(state.completedStages ?? []), {
-    id: current.id,
-    outcome: submission.outcome,
-    fields
-  }]
-  const evidence = [...(state.evidence ?? []), ...(Array.isArray(submission.evidence) ? submission.evidence : [])]
-  if (nextStageId === workflow.terminalStage || nextStageId === "halt") {
-    return {
-      workflowId: workflow.workflowId,
-      currentStage: nextStageId,
-      completedStages,
-      evidence,
-      status: nextStageId === "halt" ? "blocked" : "complete",
-      delegationOwner: current.delegationOwner ?? null,
-      resourceIds: current.resourceIds ?? []
-    }
-  }
-  const next = stages.get(nextStageId)
-  if (!next) throw new DomainToolError("INVALID_WORKFLOW", `next stage ${nextStageId} is not registered`)
-  return {
-    workflowId: workflow.workflowId,
-    currentStage: next.id,
-    completedStages,
-    evidence,
-    status: "in_progress",
-    delegationOwner: next.delegationOwner ?? null,
-    resourceIds: next.resourceIds ?? []
-  }
-}
-
-function validateKnowledgeRecord(record) {
-  if (!record || typeof record !== "object" || Array.isArray(record)) throw new DomainToolError("INVALID_RECORD", "record must be an object")
-  if (Object.keys(record).some(key => !["id", "title", "body", "tags", "revision"].includes(key))) throw new DomainToolError("INVALID_RECORD", "record contains an unregistered field")
-  if (typeof record.id !== "string" || !/^[a-z0-9][a-z0-9._-]{0,79}$/.test(record.id)) throw new DomainToolError("INVALID_RECORD_ID", "record id must be a stable lowercase identifier")
-  if (typeof record.title !== "string" || record.title.trim().length === 0) throw new DomainToolError("INVALID_RECORD", "record title is required")
-  if (typeof record.body !== "string" || record.body.trim().length === 0) throw new DomainToolError("INVALID_RECORD", "record body is required")
-  if (record.tags !== undefined && (!Array.isArray(record.tags) || record.tags.some(tag => typeof tag !== "string"))) throw new DomainToolError("INVALID_RECORD", "record tags must be an array of strings")
-  return {
-    id: record.id,
-    title: record.title,
-    body: record.body,
-    tags: record.tags ?? []
-  }
-}
-
-export function applyKnowledgeOperation(store, request) {
-  if (!store || store.schemaVersion !== 1 || !Array.isArray(store.records) || !Number.isSafeInteger(store.revision) || store.revision < 0) throw new DomainToolError("INVALID_STORE", "knowledge store does not match schema version 1")
-  const knownIds = new Set()
-  for (const record of store.records) {
-    validateKnowledgeRecord(record)
-    if (!Number.isSafeInteger(record.revision) || record.revision < 1 || knownIds.has(record.id)) throw new DomainToolError("INVALID_STORE", "knowledge record revisions and ids must be unique and valid")
-    knownIds.add(record.id)
-  }
-  if (!request || !["list", "get", "create", "update", "delete"].includes(request.action)) throw new DomainToolError("INVALID_ACTION", "unsupported knowledge operation")
-  const records = store.records
-  if (request.action === "list") return { store, result: { records } }
-  if (typeof request.recordId !== "string" || request.recordId.length === 0) {
-    if (request.action !== "create") throw new DomainToolError("RECORD_ID_REQUIRED", "recordId is required")
-  }
-  const index = records.findIndex(record => record.id === request.recordId)
-  if (request.action === "get") {
-    if (index < 0) throw new DomainToolError("RECORD_NOT_FOUND", "knowledge record does not exist")
-    return { store, result: { record: records[index] } }
-  }
-  if (request.action === "create") {
-    const record = validateKnowledgeRecord(request.record)
-    if (records.some(existing => existing.id === record.id)) throw new DomainToolError("RECORD_EXISTS", "knowledge record already exists")
-    const next = { ...record, revision: 1 }
-    const updatedStore = { ...store, revision: (store.revision ?? 0) + 1, records: [...records, next] }
-    return { store: updatedStore, result: { operation: "created", record: next, storeRevision: updatedStore.revision } }
-  }
-  if (index < 0) throw new DomainToolError("RECORD_NOT_FOUND", "knowledge record does not exist")
-  const current = records[index]
-  if (!Number.isSafeInteger(request.expectedRevision) || current.revision !== request.expectedRevision) throw new DomainToolError("STALE_RECORD_VERSION", "expectedRevision does not match the current record revision")
-  if (request.action === "delete") {
-    const updatedStore = { ...store, revision: (store.revision ?? 0) + 1, records: records.filter(record => record.id !== request.recordId) }
-    return { store: updatedStore, result: { operation: "deleted", recordId: request.recordId, storeRevision: updatedStore.revision } }
-  }
-  const replacement = validateKnowledgeRecord({ ...request.record, id: request.recordId })
-  const next = { ...replacement, revision: current.revision + 1 }
-  const updatedRecords = [...records]
-  updatedRecords[index] = next
-  const updatedStore = { ...store, revision: (store.revision ?? 0) + 1, records: updatedRecords }
-  return { store: updatedStore, result: { operation: "updated", record: next, storeRevision: updatedStore.revision } }
-}
-
 export function validateRelativePath(path) {
-  if (typeof path !== "string" || path.length === 0 || path.startsWith("/") || path.includes("\\")) throw new DomainToolError("PATH_REJECTED", "path must be a non-empty workspace-relative POSIX path")
+  if (typeof path !== "string" || path.length === 0 || path.startsWith("/") || path.includes("\\") || path.includes("\u0000") || /^[A-Za-z]:/.test(path)) {
+    throw new DomainToolError("PATH_REJECTED", "path must be a non-empty workspace-relative POSIX path")
+  }
   const segments = path.split("/")
-  if (segments.some(segment => segment === ".." || segment === "." || segment.length === 0)) throw new DomainToolError("PATH_REJECTED", "path traversal and empty path segments are forbidden")
+  if (segments.some(segment => segment === ".." || segment === "." || segment.length === 0)) {
+    throw new DomainToolError("PATH_REJECTED", "path traversal and empty path segments are forbidden")
+  }
   return path
+}
+
+export function isSafeIdentifier(value) {
+  return typeof value === "string" && /^[a-z0-9][a-z0-9-]{0,63}$/.test(value)
+}
+
+export function validateDomainCatalog(catalog) {
+  if (!catalog || catalog.schemaVersion !== 1 || !Array.isArray(catalog.domains)) {
+    throw new DomainToolError("INVALID_DOMAIN_CATALOG", "domain catalog schema is invalid")
+  }
+  const ids = new Set()
+  for (const domain of catalog.domains) {
+    if (!isSafeIdentifier(domain?.id) || typeof domain.title !== "string" || !Array.isArray(domain.repositoryIds) || domain.repositoryIds.length === 0) {
+      throw new DomainToolError("INVALID_DOMAIN_CATALOG", "domain catalog contains an invalid entry")
+    }
+    if (ids.has(domain.id)) throw new DomainToolError("INVALID_DOMAIN_CATALOG", `domain ${domain.id} is registered more than once`)
+    ids.add(domain.id)
+    if (!Array.isArray(domain.repositoryIds) || domain.repositoryIds.some(id => !isSafeIdentifier(id))) {
+      throw new DomainToolError("INVALID_DOMAIN_CATALOG", `domain ${domain.id} has invalid repository ids`)
+    }
+    if (new Set(domain.repositoryIds).size !== domain.repositoryIds.length) {
+      throw new DomainToolError("INVALID_DOMAIN_CATALOG", `domain ${domain.id} repeats a repository id`)
+    }
+    try {
+      validateRelativePath(domain.manifestPath)
+    } catch {
+      throw new DomainToolError("INVALID_DOMAIN_CATALOG", `domain ${domain.id} has an unsafe manifest path`)
+    }
+  }
+  return catalog
+}
+
+export function validateDomainManifest(manifest, expectedDomainId) {
+  const allowedFields = new Set(["schemaVersion", "domainId", "resources", "repositories", "operationMethods", "changeKinds"])
+  if (manifest && Object.keys(manifest).some(key => !allowedFields.has(key))) throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "domain manifest contains an unsupported capability field")
+  if (!manifest || manifest.schemaVersion !== 1 || manifest.domainId !== expectedDomainId) {
+    throw new DomainToolError("DOMAIN_MISMATCH", "domain manifest does not match the active domain")
+  }
+  for (const key of ["resources", "repositories", "operationMethods", "changeKinds"]) {
+    if (!Array.isArray(manifest[key])) throw new DomainToolError("INVALID_DOMAIN_MANIFEST", `domain manifest field ${key} must be an array`)
+  }
+  const resources = new Map()
+  for (const resource of manifest.resources) {
+    if (!isSafeIdentifier(resource?.id) || !isSafeIdentifier(resource?.kind) || resources.has(resource.id) || typeof resource.title !== "string" || resource.format !== "markdown" || !Number.isSafeInteger(resource.maxBytes) || resource.maxBytes < 1 || resource.maxBytes > 1000000) {
+      throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "domain manifest contains an invalid or duplicate resource")
+    }
+    try {
+      validateRelativePath(resource.path)
+    } catch {
+      throw new DomainToolError("INVALID_DOMAIN_MANIFEST", `resource ${resource.id} has an unsafe path`)
+    }
+    resources.set(resource.id, resource)
+  }
+  const repositories = new Map()
+  for (const repository of manifest.repositories) {
+    if (!isSafeIdentifier(repository?.id) || repositories.has(repository.id) || repository.root !== `assets/projects/${repository.id}`) {
+      throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "repository root must be the direct project checkout path")
+    }
+    try {
+      validateRelativePath(repository.root)
+    } catch {
+      throw new DomainToolError("INVALID_DOMAIN_MANIFEST", `repository ${repository.id} has an unsafe root`)
+    }
+    if (!Array.isArray(repository.readPaths) || repository.readPaths.length === 0 || !Array.isArray(repository.denyPaths)) {
+      throw new DomainToolError("INVALID_DOMAIN_MANIFEST", `repository ${repository.id} has invalid read policy`)
+    }
+    for (const pattern of [...repository.readPaths, ...repository.denyPaths]) {
+      if (typeof pattern !== "string" || pattern.length === 0 || pattern.startsWith("/") || pattern.includes("\\") || pattern.split("/").some(segment => segment === ".." || segment === ".")) {
+        throw new DomainToolError("INVALID_DOMAIN_MANIFEST", `repository ${repository.id} has an unsafe path policy`)
+      }
+    }
+    if (!Number.isSafeInteger(repository.maxFileBytes) || repository.maxFileBytes < 1 || repository.maxFileBytes > 1000000 || !Number.isSafeInteger(repository.maxLines) || repository.maxLines < 1 || repository.maxLines > 200) {
+      throw new DomainToolError("INVALID_DOMAIN_MANIFEST", `repository ${repository.id} has invalid read bounds`)
+    }
+    repositories.set(repository.id, repository)
+  }
+  const operationIds = new Set()
+  for (const operation of manifest.operationMethods) {
+    if (!isSafeIdentifier(operation?.id) || operationIds.has(operation.id) || !repositories.has(operation.repositoryId) || !isSafeIdentifier(operation.methodId) || !Array.isArray(operation.resourceIds) || operation.resourceIds.length === 0) {
+      throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "operation method mapping is invalid or ambiguous")
+    }
+    operationIds.add(operation.id)
+    if (new Set(operation.resourceIds).size !== operation.resourceIds.length || operation.resourceIds.some(id => !resources.has(id))) {
+      throw new DomainToolError("INVALID_DOMAIN_MANIFEST", `operation ${operation.id} references an unregistered resource`)
+    }
+  }
+  const changeKindIds = new Set()
+  for (const changeKind of manifest.changeKinds) {
+    if (!isSafeIdentifier(changeKind?.id) || changeKindIds.has(changeKind.id) || !Array.isArray(changeKind.layers) || changeKind.layers.length === 0 || changeKind.layers.some(layer => !["lint", "static", "live", "external"].includes(layer)) || !Array.isArray(changeKind.resourceIds) || changeKind.resourceIds.length === 0 || new Set(changeKind.resourceIds).size !== changeKind.resourceIds.length) {
+      throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "change kind is invalid or duplicated")
+    }
+    changeKindIds.add(changeKind.id)
+    if (changeKind.resourceIds.some(id => !resources.has(id))) throw new DomainToolError("INVALID_DOMAIN_MANIFEST", `change kind ${changeKind.id} references an unregistered resource`)
+  }
+  const testResource = resources.get("domain-tests")
+  const validationOperation = manifest.operationMethods.find(item => item.id === "domain-knowledge-validation")
+  const knowledgeChange = manifest.changeKinds.find(item => item.id === "domain-knowledge")
+  if (testResource?.kind !== "domain-knowledge-test-entry" || testResource.path !== `assets/domain-knowledge/${manifest.domainId}/tests/README.md`) {
+    throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "domain manifest must register its domain-tests resource at the standard tests README path")
+  }
+  if (!validationOperation || validationOperation.methodId !== "pytest" || !validationOperation.resourceIds.includes("domain-tests")) {
+    throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "domain manifest must map domain-knowledge-validation to pytest and domain-tests")
+  }
+  if (!knowledgeChange || !knowledgeChange.layers.includes("lint") || !knowledgeChange.resourceIds.includes("domain-tests")) {
+    throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "domain manifest must expose domain-knowledge lint through domain-tests")
+  }
+  for (const repository of repositories.values()) {
+    const development = repository.development
+    if (development === undefined) continue
+    const fields = ["writePaths", "changeKind", "operationId", "argv"]
+    if (!development || Object.keys(development).some(key => !fields.includes(key)) || !Array.isArray(development.writePaths) || development.writePaths.length === 0 || new Set(development.writePaths).size !== development.writePaths.length) throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "development policy must declare unique write paths")
+    for (const pattern of development.writePaths) {
+      validateRelativePath(pattern)
+      if (!repository.readPaths.some(read => read === pattern || (read.endsWith("/**") && pattern.startsWith(`${read.slice(0, -3)}/`)))) throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "development write paths must be within readable paths")
+    }
+    const operation = manifest.operationMethods.find(item => item.id === development.operationId && item.repositoryId === repository.id)
+    const change = manifest.changeKinds.find(item => item.id === development.changeKind)
+    const testResource = resources.get("project-tests")
+    if (!operation || operation.methodId !== "pytest" || !change || !operation.resourceIds.includes("project-tests") || !change.resourceIds.includes("project-tests") || testResource?.path !== `${repository.root}/tests/README.md` || testResource?.kind !== "project-test-entry" || !pathPolicyAllows("tests/README.md", repository)) throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "development must map a readable project-tests entry to its pytest operation and change kind")
+    if (!Array.isArray(development.argv) || development.argv.length === 0 || development.argv.length > 64 || development.argv.some(arg => typeof arg !== "string" || arg.trim().length === 0 || arg.length > 4000 || arg.includes("\u0000")) || development.argv.reduce((size, arg) => size + arg.length, 0) > 32768) throw new DomainToolError("INVALID_DOMAIN_MANIFEST", "development must register bounded test argv")
+  }
+  return { resources, repositories }
+}
+
+function pathMatches(pattern, path) {
+  if (pattern.endsWith("/**")) {
+    const root = pattern.slice(0, -3).replace(/\/$/, "")
+    return path === root || path.startsWith(`${root}/`)
+  }
+  if (pattern.startsWith("**/")) {
+    const suffixPattern = pattern.slice(3)
+    return pathMatches(suffixPattern, path) || path.split("/").some(segment => pathMatches(suffixPattern, segment))
+  }
+  if (!pattern.includes("*")) return path === pattern
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*")
+  return new RegExp(`^${escaped}$`).test(path)
+}
+
+export function pathPolicyAllows(path, repository) {
+  const denied = repository.denyPaths.some(pattern => pathMatches(pattern, path))
+  if (denied) return false
+  return repository.readPaths.some(pattern => pathMatches(pattern, path))
+}
+
+export function pathPolicyMayContain(path, repository) {
+  if (path.length === 0) return true
+  if (repository.denyPaths.some(pattern => pathMatches(pattern, path))) return false
+  return repository.readPaths.some(pattern => {
+    if (pathMatches(pattern, path)) return true
+    const base = pattern.endsWith("/**") ? pattern.slice(0, -3).replace(/\/$/, "") : pattern
+    return base.startsWith(`${path}/`)
+  })
 }

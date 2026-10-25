@@ -15,8 +15,8 @@ both texts are individually well-formed.
 `assets/notes/README.md` states the admission test: a note enters only when it
 **stays true across sessions** *and* has **nowhere else to live**. The second
 clause is the decidable one. A note that names a project's checkout paths is a
-document about that project, and `assets/projects/<project>/feature-flow.md` is
-where the knowledge base states that project's implemented flows. That is the
+document about that project, and `assets/domain-knowledge/<domain>/feature-flow.md`
+is where the knowledge base states that project's implemented flows. That is the
 mechanical approximation this file decides.
 
 **What this cannot decide**, recorded rather than left to a green run: a note
@@ -33,14 +33,14 @@ import re
 
 from _harness import paths
 
-# The shape of a path inside an included project's checkout, as it would be
-# written in prose: `assets/projects/<project>/<repository>/…`. Both a fenced
-# command and an inline reference take this form, so one pattern covers both.
-CHECKOUT_PATH = re.compile(r"assets/projects/[^/\s`]+/[^/\s`]+/")
+# The shape of a path inside an included project's checkout, as it is written
+# in prose: `assets/projects/<repository>/…`. Both a fenced command and an
+# inline reference take this form, so one pattern covers both.
+CHECKOUT_PATH = re.compile(r"assets/projects/[^/\s`]+/")
 
 # A note about the knowledge base's own layout may legitimately quote the
 # directory convention without being about one project. Naming the *pattern*
-# (`assets/projects/<项目>/<repository>/`) rather than a real pair is how the
+# (`assets/projects/<repository>/`) rather than a real repository is how the
 # convention is stated, so a placeholder segment is exempt.
 PLACEHOLDER_SEGMENT = re.compile(r"^<[^>]+>$|^\{[^}]+\}$|^\*+$|^项目$|^repository$")
 
@@ -72,9 +72,9 @@ def test_notes_do_not_carry_a_projects_checkout_internals() -> None:
 
     `assets/notes/README.md` admits a note only when it stays true across
     sessions *and* has nowhere else to live. A note citing
-    `assets/projects/<project>/<repository>/…` fails the second clause: the
-    knowledge base already states that project's implemented flows in
-    `assets/projects/<project>/feature-flow.md`, so the note is a second
+    `assets/projects/<repository>/…` fails the second clause: the knowledge
+    base already states that project's implemented flows in
+    `assets/domain-knowledge/<domain>/feature-flow.md`, so the note is a second
     authority for the same facts and diverges from it silently.
 
     The remedy is not deletion but relocation — fold the content into that
@@ -90,7 +90,7 @@ def test_notes_do_not_carry_a_projects_checkout_internals() -> None:
             offenders.append(f"{paths.relative(path)} cites {named}")
     assert offenders == [], (
         "a note describing one project from inside its checkout is a copy of that project's flow "
-        "document; move it to assets/projects/<project>/feature-flow.md and delete the note: "
+        "document; move it to assets/domain-knowledge/<domain>/feature-flow.md and delete the note: "
         f"{offenders}"
     )
 
@@ -102,7 +102,7 @@ def test_notes_do_not_carry_a_projects_checkout_internals() -> None:
 HISTORICAL_SAMPLE = """
 ## 构件
 
-仓库克隆内（`assets/projects/home-media-pilot/home-media-pilot/`）：
+仓库克隆内（`assets/projects/home-media-pilot/src/`）：
 
 - `cordis/host.js`：host 半。经 cordis 的 `shell` 服务启停服务进程。
 - `cordis/client.js`：client 半，注册四个座位。
@@ -111,7 +111,7 @@ HISTORICAL_SAMPLE = """
 ORDINARY_NOTES = [
     # A cross-session note about the knowledge base's own convention: it states
     # the path *pattern*, which is not a project.
-    "项目产物在 `assets/projects/<项目>/<repository>/`，流程文档为 `<项目>/feature-flow.md`。",
+    "项目产物在 `assets/projects/<repository>/`，流程文档在 `assets/domain-knowledge/<domain>/feature-flow.md`。",
     # A note that mentions a project by name without citing its internals: the
     # judgement this check deliberately does not make.
     "home-media-pilot 走容器路线部署，与 DSH 同机时另走 cordis 落地。",
@@ -138,3 +138,23 @@ def test_the_placement_rule_fires_and_spares() -> None:
         "the rule fires on ordinary notes that cite no project internals, which would train "
         f"authors to delete the check: {spared}"
     )
+
+
+def test_checkout_discovery_uses_git_roots_without_hiding_knowledge_docs(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "knowledge-base"
+    direct_checkout = root / "assets/projects/dsh-credentials"
+    nested_project = root / "assets/projects/dsh-settings-trusted-authority"
+    nested_checkout = nested_project / "dsh-settings-trusted-authority"
+    (root / "knowledge-repository").mkdir(parents=True)
+    (direct_checkout / "src/shared").mkdir(parents=True)
+    (direct_checkout / ".git").write_text("gitdir: /tmp/direct.git", encoding="utf-8")
+    (nested_project / "session-evidence").mkdir(parents=True)
+    (nested_checkout / "src").mkdir(parents=True)
+    (nested_checkout / ".git").write_text("gitdir: /tmp/nested.git", encoding="utf-8")
+    monkeypatch.setattr(paths, "repository_root", lambda: root)
+    assert paths.is_inside_checkout(direct_checkout)
+    assert paths.is_inside_checkout(direct_checkout / "src/shared/catalog.ts")
+    assert not paths.is_inside_checkout(root / "assets/domain-knowledge/dsh-credentials/feature-flow.md")
+    assert not paths.is_inside_checkout(nested_project / "feature-flow.md")
+    assert not paths.is_inside_checkout(nested_project / "session-evidence")
+    assert paths.is_inside_checkout(nested_checkout / "src")
