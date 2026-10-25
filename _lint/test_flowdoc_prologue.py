@@ -31,20 +31,23 @@ def _is_paragraph(line: str) -> bool:
     return not line.lstrip().startswith(("#", "```", "-", "*", "|", ">"))
 
 
-# A demand document under `assets/inbox/` opens with its provenance block
-# instead of the paragraph: `target` / `output` / `prompt` tell the reader what
-# the demand touches and where its result lands before the flow is read. That
-# ordering is the directory's own declared relaxation of F01, stated in
-# `assets/inbox/README.md`; the paragraph then follows the block. Every other
-# flow document keeps the original form, so the exception is keyed on location
-# rather than loosened globally.
-#
-# `assets/archive/` keeps the SAME form: an archived demand is the inbox
-# document moved, not rewritten (its README says the contract travels with the
-# document), so its provenance block leads there too. Keying the exception on
-# both demand directories is what lets a document be archived without being
-# falsified into a violation of the rule it still lives under.
-DEMAND_PREFIXES = (f"{'assets'}/inbox/", f"{'assets'}/archive/")
+def _is_demand_record(path) -> bool:
+    relative = paths.relative(path)
+    filename = relative.rsplit("/", 1)[-1]
+    return (
+        relative.startswith(("assets/inbox/", "assets/archive/"))
+        and filename.startswith("req.")
+        and filename.endswith(".md")
+    )
+
+
+def _main_graph_heading_index(path, lines: list[str]) -> int | None:
+    heads = [i for i, line in enumerate(lines) if line.startswith("## ")]
+    if not heads:
+        return None
+    if _is_demand_record(path) and lines[heads[0]].strip() == "## 需求澄清" and len(heads) > 1:
+        return heads[1]
+    return heads[0]
 
 
 def _opens_legally(path, lines: list[str]) -> str | None:
@@ -54,18 +57,11 @@ def _opens_legally(path, lines: list[str]) -> str | None:
         return "no content after the H1"
 
     first = lines[index]
-    relative = paths.relative(path)
-    if not relative.startswith(DEMAND_PREFIXES):
+    if not _is_demand_record(path):
         if not _is_paragraph(first):
             return f"{index + 1} opens with {first[:40]!r}"
         return None
 
-    # The inbox form: a `yaml` fence, then the paragraph, then an optional
-    # 「需求澄清」 h2 chapter, then the first main-flow h2. The clarification
-    # chapter is the inbox directory's second declared relaxation of P-01/P-10,
-    # stated in `assets/inbox/README.md`; it carries the clarification record,
-    # acceptance anchors, and scope boundary that the four independent subagents
-    # need before they read the graph.
     if not first.lstrip().startswith("```yaml"):
         return f"{index + 1} does not open with the provenance block, but with {first[:40]!r}"
     closing = next(
@@ -81,7 +77,6 @@ def _opens_legally(path, lines: list[str]) -> str | None:
         return "the provenance block is not followed by the purpose paragraph"
     if not _is_paragraph(lines[after]):
         return f"{after + 1} follows the provenance block with {lines[after][:40]!r}"
-    # After the paragraph, the next h2 may be 「需求澄清」; skip it if present.
     # The paragraph itself may span multiple physical lines (D-21 says each
     # paragraph is one physical line, but the paragraph may be followed by
     # other blocks like lists or emphasis lines before the first h2 — those
@@ -92,7 +87,7 @@ def _opens_legally(path, lines: list[str]) -> str | None:
     if not heads:
         return "no h2 chapter found"
     first_h2 = heads[0]
-    if lines[first_h2].strip() == "## 需求澄清":
+    if _is_demand_record(path) and lines[first_h2].strip() == "## 需求澄清":
         if len(heads) < 2:
             return "「需求澄清」chapter present but no following h2 for the main flow"
         first_h2 = heads[1]
@@ -100,15 +95,15 @@ def _opens_legally(path, lines: list[str]) -> str | None:
 
 
 def test_every_flow_document_opens_with_a_prose_paragraph(repo) -> None:
-    """F01: the block after the H1 must be a paragraph, or the inbox block then one.
+    """F01: the block after the H1 must be a paragraph, or the request block then one.
 
     Only the H1 and blank lines may precede it. A document that opens with its
     graph forces the reader through the whole picture before learning whether it
     answers their question.
 
-    `assets/inbox/` documents lead with their provenance block, per that
-    directory's declared relaxation; the paragraph still follows immediately, so
-    the reader is never moved from the H1 straight into a graph.
+    Qualifying inbox and archive request records lead with their provenance
+    block; the paragraph still follows immediately, so the reader is never moved
+    from the H1 straight into a graph.
     """
     offenders = []
     for path in paths.flow_documents():
@@ -117,13 +112,13 @@ def test_every_flow_document_opens_with_a_prose_paragraph(repo) -> None:
             offenders.append(f"{paths.relative(path)}: {defect}")
     assert offenders == [], (
         "a flow document must state its purpose in prose up front — immediately after the H1, or "
-        "immediately after the inbox provenance block — so a reader can decide whether the graph "
+        "immediately after the request-record provenance block — so a reader can decide whether the graph "
         f"concerns them before reading it: {offenders}"
     )
 
 
 def test_the_opening_rule_tells_the_two_forms_apart() -> None:
-    """Both openings must be accepted, and every other opening rejected.
+    """Each legal opening must be accepted, and every other opening rejected.
 
     Stated over literal source so the property holds whatever the corpus
     contains today. Without the negative half the exception could widen until a
@@ -136,6 +131,10 @@ def test_the_opening_rule_tells_the_two_forms_apart() -> None:
     """
     accepted = {
         "plain": ("assets/projects/x/feature-flow.md", ["# T", "", "目标段落。"]),
+        "ordinary markdown clarification heading is not an exception": (
+            "assets/inbox/notes.md",
+            ["# T", "", "目标段落。", "", "## 需求澄清"],
+        ),
         "inbox block then paragraph": (
             "assets/inbox/req.x-20260101-000000.md",
             ["# T", "", "```yaml", "target: x", "```", "", "目标段落。", "", "## 主流程"],
@@ -147,10 +146,29 @@ def test_the_opening_rule_tells_the_two_forms_apart() -> None:
                 "## 需求澄清", "", "内容", "", "## 主流程", "", "```mermaid", "flowchart TB", "```",
             ],
         ),
+        "archive block then paragraph": (
+            "assets/archive/req.x-20260101-000000.md",
+            ["# T", "", "```yaml", "target: x", "```", "", "目标段落。", "", "## 主流程"],
+        ),
+        "archive block + paragraph + clarification + main h2": (
+            "assets/archive/req.x-20260101-000000.md",
+            [
+                "# T", "", "```yaml", "target: x", "```", "", "目标段落。", "",
+                "## 需求澄清", "", "内容", "", "## 主流程", "", "```mermaid", "flowchart TB", "```",
+            ],
+        ),
     }
     rejected = {
         "graph first": ("assets/projects/x/feature-flow.md", ["# T", "", "```mermaid", "flowchart TB", "```"]),
         "list first": ("assets/projects/x/feature-flow.md", ["# T", "", "- 一项"]),
+        "inbox ordinary markdown with a provenance block": (
+            "assets/inbox/notes.md",
+            ["# T", "", "```yaml", "target: x", "```", "", "目标段落。"],
+        ),
+        "archive ordinary markdown with a provenance block": (
+            "assets/archive/notes.md",
+            ["# T", "", "```yaml", "target: x", "```", "", "目标段落。"],
+        ),
         "inbox block with no paragraph": (
             "assets/inbox/req.x-20260101-000000.md",
             ["# T", "", "```yaml", "target: x", "```"],
@@ -201,30 +219,38 @@ def test_the_opening_rule_tells_the_two_forms_apart() -> None:
         paths.relative = real_relative
 
 
+def test_ordinary_markdown_does_not_skip_a_clarification_heading() -> None:
+    lines = ["# T", "", "## 需求澄清", "", "澄清内容", "", "## 主流程"]
+    for relative in ("assets/inbox/notes.md", "assets/archive/notes.md"):
+        path = paths.repository_root() / relative
+        assert _main_graph_heading_index(path, lines) == 2
+
+
 def test_the_main_graph_chapter_holds_only_the_graph(repo) -> None:
     """F02: the first `##` chapter's body must be the graph and nothing else.
 
     An entry node stays in the main graph, but a sub-flow's internal steps do
     not; their presence is what makes a main graph unreadable on its own.
 
-    For inbox documents the first `##` may be 「需求澄清」 (the directory's
-    second declared relaxation); the graph-only rule then applies to the next
-    `##`, which is the main flow chapter.
+    For qualifying request records the first `##` may be 「需求澄清」; the
+    graph-only rule then applies to the next `##`, which is the main flow chapter.
     """
     offenders = []
     for path in paths.flow_documents():
         lines = _lines(path)
         heads = [index for index, line in enumerate(lines) if line.startswith("## ")]
-        if not heads:
-            offenders.append(f"{paths.relative(path)}: carries a graph but no h2 chapter")
-            continue
-        start = heads[0]
         relative = paths.relative(path)
-        if relative.startswith(DEMAND_PREFIXES) and lines[start].strip() == "## 需求澄清":
-            if len(heads) < 2:
-                offenders.append(f"{relative}: 「需求澄清」chapter present but no following h2")
-                continue
-            start = heads[1]
+        if not heads:
+            offenders.append(f"{relative}: carries a graph but no h2 chapter")
+            continue
+        if (
+            _is_demand_record(path)
+            and lines[heads[0]].strip() == "## 需求澄清"
+            and len(heads) < 2
+        ):
+            offenders.append(f"{relative}: 「需求澄清」chapter present but no following h2")
+            continue
+        start = _main_graph_heading_index(path, lines)
         position = heads.index(start)
         end = heads[position + 1] if position + 1 < len(heads) else len(lines)
         body = [line for line in lines[start + 1 : end] if line.strip()]

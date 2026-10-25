@@ -1,6 +1,6 @@
 # 知识库文档守护
 
-本目录把[文档撰写规范](../.agents/skills/doc-writing/reference/doc-writing-constraints.md)与[流程类文档撰写规范](../.agents/skills/process-doc-writing/reference/process-doc-writing-constraints.md)中**可机械判定**的那部分落成可执行的检查。规范说应当怎么写，这里判定是否真的这么写了；两者分开存放，改判据不动用例，改用例也不悄悄重定义判据。main 的项目守护要求 `assets/projects/` 在文件系统和 Git 索引中都只含空的 `.gitkeep` 占位文件；项目实际内容留在 `duoduo` 内容分支。
+本目录把[文档撰写规范](../.agents/skills/doc-writing/reference/doc-writing-constraints.md)与[流程类文档撰写规范](../.agents/skills/process-doc-writing/reference/process-doc-writing-constraints.md)中**可机械判定**的那部分落成可执行的检查。规范说应当怎么写，这里判定是否真的这么写了；两者分开存放，改判据不动用例，改用例也不悄悄重定义判据。
 
 ## 主流程图
 
@@ -66,7 +66,7 @@ flowchart TB
 
 ### DISC_WALK
 
-从知识库根递归遍历。仓库根由 `_harness/paths.py` 的 `repository_root()` 向上取最近一个同时带 `knowledge-repository/` 与 `assets/` 的祖先目录得到——两个标志缺一不可，只认其一都会误命中无关祖先。
+从知识库根递归遍历。仓库根由 `_harness/paths.py` 的 `repository_root()` 向上取最近一个同时带 `_meta/` 与 `assets/` 的祖先目录得到——两个标志缺一不可，只认其一都会误命中无关祖先。
 
 **输入**
 
@@ -521,10 +521,10 @@ UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q
 | `test_flowdoc_params.py` | F07 参数栏齐备与边两侧落地 |
 | `test_flowdoc_blueprint.py` | F08 蓝图绘自身图、内层节点成章 |
 | `test_doc_placement.py` | `assets/notes/` 准入判据的「没有别处可放」一条：笔记不得描述某个项目克隆内部 |
-| `test_domain_agent_scaffold.py` | 领域 agent `AGENTS.md`、规范卡片、JSON Schema 与实例数据交叉引用、宿主工具登记/生命周期、每个 JavaScript 文件语法和 runtime/registration/engine Node 行为测试 |
 | `test_inbox_provenance.py` | `assets/inbox/` 前置数据块的键齐备与 `prompt` 留档 |
 | `test_inbox_contract.py` | 需求文件名的四段式、以及每张图内每个节点都带三档状态之一 |
-| `test_projects_main_boundary.py` | main 的 `assets/projects/` 文件系统与 Git 索引只允许空的 `.gitkeep` 占位文件，拒绝项目定义、项目子目录、文档、克隆与其他文件；项目实际内容留在 `duoduo`，由内容侧守护检查 |
+| `test_project_deploy_docs.py` | 各项目的 `deploy.md` 在位且非空、笔记已迁移、命令入口在克隆内存在、不含凭据与内网地址、`.env` 样板的键名合法且与 Compose 的 `${}` 引用双向对应 |
+| `test_domain_agent_scaffold.py` | 领域 agent 规范卡片、工具/scope 约束、schema、子 agent 生命周期、写入守卫、测试沙箱和 Node 行为套件 |
 | `test_suite_integrity.py` | 门禁花名册与守卫钩子 |
 
 ## 判断项：本目录**不**判定的部分
@@ -538,5 +538,4 @@ UV_CACHE_DIR=.uv-cache uv run --with pytest==9.1.1 pytest _lint -q
 - **D03 的非编号引用**：不写成编号的引用（「见上一次讨论」）不可寻址，无法与普通行文区分。
 - **分层判据的未点名情形**：一条用自然语言复述了某个项目流程、却未点名任何克隆内路径的笔记，与「恰好提到该项目的正常跨会话笔记」在文本上无从区分。`test_doc_placement.py` 只覆盖点名了路径的那一类。**这条缺口是有代价的**：本目录的全绿只说明已被覆盖的那一类成立，不说明 `assets/notes/` 里没有放错层的文档——判层靠人读该目录 README 的准入判据。
 - **D04–D09**：陈述当前状态、不采纳会话视角、不承载推导、不确定表述有边界、语言不混用、修订不变命题——全部是语义判据，本目录不涉。
-- **领域 agent 的运行语义**：门禁校验脚手架结构、工具声明、数据 schema 与流程状态图；不会在 Harness Host 中安装或调用插件，也不能证明运行时权限、文件系统隔离和 reviewer 输出真实正确。具体实例须另行验收宿主工具行为。
 - **C01–C05**：agent 执行约束，与文档形态无关。

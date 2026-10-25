@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from _harness import paths
 
 
@@ -37,6 +39,9 @@ def tracked_project_paths(repository_root: Path) -> list[str]:
 
 def test_current_main_projects_directory_is_empty() -> None:
     repository_root = paths.repository_root()
+    branch = subprocess.run(["git", "-C", str(repository_root), "branch", "--show-current"], check=True, capture_output=True, text=True).stdout.strip()
+    if branch != "main":
+        pytest.skip("the empty-project boundary applies to main; content branches register project checkouts")
     root = repository_root / "assets" / "projects"
     assert project_tree_errors(root) == []
     assert tracked_project_paths(repository_root) == ["assets/projects/.gitkeep"]

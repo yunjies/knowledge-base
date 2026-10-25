@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".uv-cache", ".agents"}
+SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".uv-cache", ".agents", ".worktrees"}
 
 # `.agents/` is not a layer of this knowledge base: it is a skill distribution
 # root, scanned by the harness rather than read as knowledge-base documentation.
@@ -24,13 +24,6 @@ SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".
 # skill, so their wording is the skill package's to decide. Judging them by this
 # repository's writing constraints would report failures whose cause has nothing
 # to do with this repository's documents.
-
-# A project's own checkout is another repository with its own history and
-# conventions; the knowledge base states that its internal layout is the
-# project's decision. Its documents are therefore read here, never judged: the
-# flow document the knowledge base owns sits *beside* the checkout, not inside
-# it, and that is the one this suite checks.
-CHECKOUT_PATTERN = re.compile(r"^assets/projects/[^/]+/[^/]+/")
 
 # A document is a flow document when it carries a mermaid graph. The criterion is
 # the graph, not the directory: a sample and a project's flow document are the
@@ -47,8 +40,21 @@ def repository_root() -> Path:
 
 
 def is_inside_checkout(path: Path) -> bool:
-    """Report whether the document belongs to an included project's checkout."""
-    return bool(CHECKOUT_PATTERN.match(str(path.relative_to(repository_root()))))
+    """Report whether a path is inside a Git checkout under assets/projects."""
+    root = repository_root()
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    if relative.parts[:2] != ("assets", "projects") or len(relative.parts) < 3:
+        return False
+    projects_root = root / "assets" / "projects"
+    candidate = path if path.is_dir() else path.parent
+    while candidate != projects_root:
+        if (candidate / ".git").exists():
+            return True
+        candidate = candidate.parent
+    return False
 
 
 
@@ -71,6 +77,8 @@ def _walk(root: Path):
         except OSError:
             continue
         for entry in entries:
+            if directory == root and entry.name == ".sessions":
+                continue
             if entry.is_dir():
                 if entry.name in SKIP_DIRS:
                     continue
